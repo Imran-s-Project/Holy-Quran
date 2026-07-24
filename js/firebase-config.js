@@ -29,7 +29,7 @@
 //   }
 
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
+const FIREBASE_CONFIG = {
   apiKey: "AIzaSyCZXiL61tFvvjLD8PyWppskbvC2H9pI32w",
   authDomain: "quranbangla2.firebaseapp.com",
   projectId: "quranbangla2",
