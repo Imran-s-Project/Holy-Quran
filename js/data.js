@@ -52,7 +52,7 @@ const THEMES = [
 
 // Bump the version suffix any time app-shell files change so the service
 // worker picks up a fresh copy instead of serving a stale cached version.
-const SW_VERSION = 'v151';
+const SW_VERSION = 'v152';
 const SHELL_CACHE_NAME = `qr-shell-${SW_VERSION}`;
 const API_CACHE_NAME = `qr-api-${SW_VERSION}`;
 const AUDIO_CACHE_NAME = `qr-audio-${SW_VERSION}`;
@@ -105,8 +105,13 @@ const APP_SHELL_FILES = [
   './js/i18n/fa.js',
   './js/i18n/ms.js',
   './js/storage.js',
+  './js/idb.js',
+  './js/transliteration.js',
   './js/firebase-config.js',
+  './js/emailjs-config.js',
+  './js/otp.js',
   './js/auth.js',
+  './js/push.js',
   './js/player.js',
   './js/reader.js',
   './js/sidebar.js',
@@ -114,14 +119,20 @@ const APP_SHELL_FILES = [
   './js/topics.js',
   './js/planner.js',
   './js/stats.js',
+  './js/stats-trends.js',
+  './js/audio-stats.js',
+  './js/share-card.js',
   './js/ramadan.js',
   './js/tajweed.js',
   './js/qibla.js',
   './js/nav.js',
   './js/menu.js',
+  './js/translation-help.js',
   './js/download-manager.js',
   './js/theme-builder.js',
   './js/hadith.js',
+  './js/donation-banner.js',
+  './js/onboarding.js',
   './js/app.js',
   './icons/icon-192.png',
   './icons/icon-512.png'
