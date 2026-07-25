@@ -201,6 +201,7 @@ function handleShortcutLaunch(){
   if(typeof IDBKV !== 'undefined') await IDBKV.init();
   loadPrefs();
   if(typeof initAuth === 'function') initAuth();
+  if(typeof initPasswordResetFlow === 'function') initPasswordResetFlow();
   if(typeof loadCustomTheme === 'function') loadCustomTheme();
   initTheme();
   initFontControls();
