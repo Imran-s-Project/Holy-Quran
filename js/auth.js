@@ -251,11 +251,16 @@ async function handlePasswordReset(){
   const btn = document.getElementById('fgSubmit');
   btn.disabled = true; btn.textContent = 'পাঠানো হচ্ছে...';
   try{
-    await fbAuth.sendPasswordResetEmail(email);
+    const resp = await fetch('/api/send-reset-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    if(!resp.ok) throw new Error('send failed');
     showToast('পুনরুদ্ধারের লিঙ্ক ইমেইলে পাঠানো হয়েছে');
     closeAuthFlow();
   }catch(e){
-    errBox.textContent = authErrorMessageBn(e);
+    errBox.textContent = 'পাঠাতে ব্যর্থ হয়েছে, আবার চেষ্টা করুন।';
   }finally{
     btn.disabled = false; btn.textContent = 'পুনরুদ্ধারের লিঙ্ক ইমেইল করুন';
   }
@@ -884,7 +889,12 @@ async function saveProfileChanges({ name, position, avatarColor, avatarIcon, pho
 async function handleSendPasswordReset(email){
   if(!email) return;
   try{
-    await fbAuth.sendPasswordResetEmail(email);
+    const resp = await fetch('/api/send-reset-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    if(!resp.ok) throw new Error('send failed');
     showToast('পাসওয়ার্ড রিসেট লিঙ্ক ইমেইলে পাঠানো হয়েছে');
   }catch(e){
     showToast('পাঠাতে ব্যর্থ হয়েছে, আবার চেষ্টা করুন');
