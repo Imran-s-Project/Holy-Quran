@@ -18,11 +18,82 @@ function initRamadanToggle(){
   applyRamadanVisual();
   chk.onchange = () => {
     state.ramadanMode = chk.checked;
+    // a manual tap always wins over the auto-detector from here on, until
+    // the hijri month itself changes again (see checkAutoRamadanMode)
+    state.ramadanAutoSet = false;
     saveRamadanMode();
+    saveRamadanAutoState();
     if(state.ramadanMode) markRamadanModeUsed();
     applyRamadanVisual();
     showToast(state.ramadanMode ? '🌙 রমজান মোড চালু হয়েছে' : 'রমজান মোড বন্ধ করা হয়েছে');
   };
+}
+
+// ---------- Auto Ramadan detection (hijri calendar) ----------
+// Turns Ramadan mode on by itself once the hijri month rolls over to
+// Ramadan (month 9), and back off once it rolls into Shawwal (month 10) —
+// but only for changes THIS function made; a manual toggle in settings
+// always takes precedence until the hijri month itself changes again.
+function todayLocalDateStr(d = new Date()){
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+
+async function fetchTodayHijriMonth(){
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  const res = await fetch(`${PRAYER_API}/gToH/${dd}-${mm}-${yyyy}`);
+  if(!res.ok) throw new Error('hijri lookup failed');
+  const json = await res.json();
+  const month = json?.data?.hijri?.month?.number;
+  if(!Number.isInteger(month)) throw new Error('unexpected hijri response');
+  return month;
+}
+
+function syncRamadanCheckbox(){
+  const chk = document.getElementById('settingsRamadanMode');
+  if(chk) chk.checked = state.ramadanMode;
+}
+
+async function checkAutoRamadanMode(){
+  const today = todayLocalDateStr();
+  if(state.ramadanLastCheck === today) return; // already checked once today
+
+  let hijriMonth;
+  try{
+    hijriMonth = await fetchTodayHijriMonth();
+  }catch(e){
+    return; // offline or API hiccup — just try again next app open, don't touch ramadanMode
+  }
+
+  state.ramadanLastCheck = today;
+  state.ramadanLastHijriMonth = hijriMonth;
+  saveRamadanAutoState();
+
+  const isRamadan = hijriMonth === 9;
+
+  if(isRamadan && !state.ramadanMode){
+    state.ramadanMode = true;
+    state.ramadanAutoSet = true;
+    saveRamadanMode();
+    saveRamadanAutoState();
+    markRamadanModeUsed();
+    applyRamadanVisual();
+    syncRamadanCheckbox();
+    showToast('🌙 রমজান শুরু হয়েছে — রমজান মোড অটোমেটিক চালু হয়ে গেছে');
+  } else if(!isRamadan && state.ramadanMode && state.ramadanAutoSet){
+    // only auto-switch it back off if the app itself turned it on;
+    // a mode the user turned on by hand is left alone
+    state.ramadanMode = false;
+    state.ramadanAutoSet = false;
+    saveRamadanMode();
+    saveRamadanAutoState();
+    applyRamadanVisual();
+    syncRamadanCheckbox();
+    showToast('রমজান শেষ হয়েছে — রমজান মোড অটোমেটিক বন্ধ হয়ে গেছে');
+  }
 }
 
 // ---------- Taraweeh tracker modal ----------
@@ -147,4 +218,7 @@ function initRamadan(){
   initTaraweehModal();
   const bannerBtn = document.getElementById('ramadanBannerBtn');
   if(bannerBtn) bannerBtn.onclick = openTaraweehModal;
+  // fire-and-forget: runs in the background, flips the mode on/off (and
+  // updates the UI) once the network call resolves, without blocking init
+  checkAutoRamadanMode();
 }
