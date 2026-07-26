@@ -8,6 +8,85 @@ audioEl.setAttribute('playsinline', '');
 
 const SPEED_STEPS = [0.75, 1, 1.25, 1.5, 2];
 
+// ---------- Smart auto-scroll / follow-along ----------
+// Keeps the visible ayah in sync with what's playing, but thoughtfully:
+//  - skips the scroll when the ayah is already comfortably on screen, so
+//    a run of short back-to-back ayahs doesn't wobble the page every second
+//  - respects prefers-reduced-motion (instant jump instead of smooth scroll)
+//  - if the listener manually scrolls away to read elsewhere while tilawat
+//    keeps going, we stop yanking the screen back to it — instead a small
+//    "বর্তমান আয়াতে যান" button appears so they can rejoin whenever they want
+let followAlongEnabled = true;
+let isAutoScrolling = false;
+let autoScrollResetTimer = null;
+let currentPlayingCard = null;
+let followBtn = null;
+
+function prefersReducedMotion(){
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// --header-h / --player-h are the *real* rendered heights of the fixed
+// header and player bar (set in app.js / css), so this stays correct
+// across themes and screen sizes instead of hardcoding pixel guesses.
+function fixedChromeHeights(){
+  const cs = getComputedStyle(document.documentElement);
+  const headerH = parseFloat(cs.getPropertyValue('--header-h')) || 56;
+  const playerH = parseFloat(cs.getPropertyValue('--player-h')) || 72;
+  return { headerH, playerH };
+}
+
+function isCardComfortablyVisible(card){
+  if(!card) return false;
+  const { headerH, playerH } = fixedChromeHeights();
+  const rect = card.getBoundingClientRect();
+  const visibleTop = headerH + 12;
+  const visibleBottom = window.innerHeight - playerH - 12;
+  const cardCenter = rect.top + rect.height / 2;
+  return cardCenter >= visibleTop && cardCenter <= visibleBottom;
+}
+
+function scrollToCard(card){
+  if(!card) return;
+  isAutoScrolling = true;
+  card.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'center' });
+  clearTimeout(autoScrollResetTimer);
+  // Rough upper bound for how long a smooth scrollIntoView takes, so we
+  // don't mistake our own scroll for the listener scrolling away.
+  autoScrollResetTimer = setTimeout(() => { isAutoScrolling = false; }, prefersReducedMotion() ? 60 : 700);
+}
+
+function ensureFollowButton(){
+  if(followBtn) return followBtn;
+  followBtn = document.createElement('button');
+  followBtn.type = 'button';
+  followBtn.id = 'followAyahBtn';
+  followBtn.className = 'follow-ayah-btn';
+  followBtn.innerHTML = '<i class="fa-solid fa-arrow-down"></i> বর্তমান আয়াতে যান';
+  followBtn.addEventListener('click', () => {
+    followAlongEnabled = true;
+    hideFollowButton();
+    if(currentPlayingCard) scrollToCard(currentPlayingCard);
+  });
+  document.body.appendChild(followBtn);
+  return followBtn;
+}
+function showFollowButton(){ ensureFollowButton().classList.add('visible'); }
+function hideFollowButton(){ if(followBtn) followBtn.classList.remove('visible'); }
+
+// Passive scroll listener: tells manual scrolling apart from our own
+// programmatic scrollIntoView calls (guarded by isAutoScrolling).
+window.addEventListener('scroll', () => {
+  if(isAutoScrolling || !state.isPlaying || !currentPlayingCard) return;
+  if(isCardComfortablyVisible(currentPlayingCard)){
+    followAlongEnabled = true;
+    hideFollowButton();
+  } else if(followAlongEnabled){
+    followAlongEnabled = false;
+    showFollowButton();
+  }
+}, { passive: true });
+
 // ---------- শব্দ-অনুযায়ী (word-by-word) অডিও হাইলাইট ----------
 // প্রতিটি আয়াতের অডিও ফাইল সম্পূর্ণ আয়াতের একটি একক mp3 (কোনো word-level
 // টাইমস্ট্যাম্প মেটাডেটা এখানে নেই)। তাই যথাযথ karaoke-style সিঙ্ক সম্ভব নয়,
@@ -98,8 +177,24 @@ function playAtIndex(idx, userInitiated){
   const libList = document.getElementById('libraryListContainer');
   if(libList && document.getElementById('libTabHistory') && document.getElementById('libTabHistory').classList.contains('active')) renderHistoryList(libList);
   recordActivityToday();
+  // Follow-along scroll: an explicit tap always takes the listener there
+  // and resumes auto-following (they clearly want to be at that ayah).
+  // Auto-advance during continuous playback only scrolls if they haven't
+  // manually scrolled away, and skips it entirely when the ayah is already
+  // comfortably on screen (see the follow-along engine above).
   const card = document.getElementById(`ayah-${item.key.replace(':','-')}`);
-  if(card && userInitiated) card.scrollIntoView({behavior:'smooth', block:'center'});
+  currentPlayingCard = card;
+  if(card){
+    if(userInitiated){
+      followAlongEnabled = true;
+      hideFollowButton();
+      scrollToCard(card);
+    } else if(followAlongEnabled){
+      if(!isCardComfortablyVisible(card)) scrollToCard(card);
+    } else {
+      showFollowButton();
+    }
+  }
   updateMediaSessionMetadata(item);
   prepareWordHighlight(item);
 }
@@ -313,6 +408,9 @@ function initPlayer(){
     state.isPlaying=false; state.playIndex=-1;
     playerBar.classList.remove('visible');
     clearWordHighlight();
+    followAlongEnabled = true;
+    currentPlayingCard = null;
+    hideFollowButton();
     syncPlayingUI();
   };
   const speedBtn = document.getElementById('speedBtn');
