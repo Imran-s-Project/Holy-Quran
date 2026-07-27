@@ -261,6 +261,25 @@ function isFullSurahReciter(){
   return !!(r && r.audioType === 'surah');
 }
 
+// ---------- Smart prefetch: quietly warm the cache for the *next* ayah while
+// the current one is playing, so advancing to it (autoplay or manual "next")
+// is instant and offline-safe by the time the listener gets there. Runs only
+// when online and only if that URL isn't already cached; failures are silent
+// since this is a best-effort convenience, not a requirement for playback. ----
+async function prefetchNextAudio(idx){
+  if(!navigator.onLine || !('caches' in window)) return;
+  const nextItem = state.playlist[idx + 1];
+  if(!nextItem) return;
+  const url = currentAudioUrl(nextItem);
+  try{
+    const cache = await caches.open(AUDIO_CACHE_NAME);
+    const existing = await cache.match(url);
+    if(existing) return;
+    const res = await fetch(url, { mode: 'no-cors', credentials: 'omit' });
+    if(res) await cache.put(url, res.clone());
+  }catch(e){ /* best-effort only — a failed prefetch just means no head start */ }
+}
+
 function playAtIndex(idx, userInitiated){
   if(idx < 0 || idx >= state.playlist.length) return;
   const item = state.playlist[idx];
@@ -316,6 +335,7 @@ function playAtIndex(idx, userInitiated){
   }
   updateMediaSessionMetadata(item);
   prepareWordHighlight(item);
+  prefetchNextAudio(idx);
 }
 
 // Called whenever the current track fails to load/play (404 from the CDN,
@@ -525,7 +545,13 @@ function initPlayer(){
   const reciterFieldBtn = document.getElementById('reciterFieldBtn');
   if(reciterFieldBtn) reciterFieldBtn.onclick = openReciterPicker;
 
-  document.getElementById('playPauseBtn').onclick = () => { state.isPlaying ? pausePlayback() : resumePlayback(); };
+  const playPauseBtn = document.getElementById('playPauseBtn');
+  playPauseBtn.onclick = () => { state.isPlaying ? pausePlayback() : resumePlayback(); };
+  playPauseBtn.addEventListener('pointerdown', () => {
+    playPauseBtn.classList.remove('rippling');
+    void playPauseBtn.offsetWidth; // restart the animation even on rapid taps
+    playPauseBtn.classList.add('rippling');
+  });
   document.getElementById('prevBtn').onclick = () => { if(state.playIndex > 0) playAtIndex(state.playIndex - 1, true); };
   document.getElementById('nextBtn').onclick = () => { if(state.playIndex < state.playlist.length - 1) playAtIndex(state.playIndex + 1, true); };
 
