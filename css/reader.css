@@ -89,9 +89,14 @@
 
 .ayah-card{
   display:flex;gap:16px;padding:20px 4px;border-bottom:1px dashed var(--line);align-items:flex-start;
-  border-radius:10px;transition:background .25s;
+  border-radius:10px;transition:background .3s ease, box-shadow .3s ease, border-color .3s ease;
+  border-left:3px solid transparent;
 }
-.ayah-card.playing{background:var(--gold-soft);}
+.ayah-card.playing{
+  background:var(--surface, rgba(0,0,0,.02));
+  border-left-color:var(--gold);
+  box-shadow:0 2px 14px rgba(0,0,0,.06);
+}
 .ayah-card:last-child{border-bottom:none;}
 .medallion{
   flex-shrink:0;width:38px;height:38px;position:relative;
@@ -136,7 +141,20 @@
 }
 .ayah-actions button:hover{background:var(--sage);}
 .ayah-actions button.bookmarked{background:var(--gold);color:var(--teal-deep);border-color:var(--gold);}
+.ayah-actions button.play-toggle{gap:6px;}
 .ayah-actions button.play-toggle.is-playing{background:var(--teal);color:var(--sage);border-color:var(--teal);}
+.eq-bars{display:inline-flex;align-items:flex-end;gap:2px;height:10px;}
+.eq-bars i{
+  display:block;width:2px;background:currentColor;border-radius:1px;
+  animation:eq-bounce 0.9s ease-in-out infinite;
+}
+.eq-bars i:nth-child(1){height:40%;animation-delay:-0.6s;}
+.eq-bars i:nth-child(2){height:100%;animation-delay:-0.3s;}
+.eq-bars i:nth-child(3){height:60%;animation-delay:0s;}
+@keyframes eq-bounce{0%,100%{transform:scaleY(0.4);}50%{transform:scaleY(1);}}
+@media (prefers-reduced-motion: reduce){
+  .eq-bars i{animation:none;height:70% !important;}
+}
 
 .loader{
   display:flex;flex-direction:column;align-items:center;gap:14px;padding:70px 0;color:var(--ink-soft);
