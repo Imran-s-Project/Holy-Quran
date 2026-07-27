@@ -23,30 +23,81 @@
   padding:8px 14px;
 }
 .pc-play-btn{
-  position:relative;flex-shrink:0;width:46px;height:46px;border-radius:50%;
+  position:relative;flex-shrink:0;width:50px;height:50px;border-radius:50%;
   background:none;border:none;color:var(--player-accent-bg, var(--gold));cursor:pointer;
   display:flex;align-items:center;justify-content:center;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform .18s cubic-bezier(.34,1.56,.64,1);
 }
-.pc-play-btn svg.icon-play,.pc-play-btn svg.icon-pause{position:relative;z-index:1;color:var(--player-accent-text, var(--teal-deep));}
+.pc-play-btn:active{transform:scale(.9);}
+
+/* Solid gradient disc — subtle top-light so the button reads as raised/tactile
+   rather than a flat filled circle. */
 .pc-play-btn::before{
-  content:"";position:absolute;inset:3px;border-radius:50%;
-  background:var(--player-accent-bg, var(--gold));z-index:0;
-  box-shadow:0 3px 10px rgba(217,180,94,.35);
+  content:"";position:absolute;inset:4px;border-radius:50%;z-index:0;
+  background:radial-gradient(circle at 32% 28%, color-mix(in srgb, var(--player-accent-bg, var(--gold)) 100%, white 22%) 0%, var(--player-accent-bg, var(--gold)) 62%, color-mix(in srgb, var(--player-accent-bg, var(--gold)) 100%, black 12%) 100%);
+  box-shadow:0 3px 12px rgba(217,180,94,.4), inset 0 1px 1px rgba(255,255,255,.5);
+  transition:box-shadow .3s ease, transform .3s ease;
 }
-.pc-play-btn .icon-pause{display:none;}
-.pc-play-btn.is-playing .icon-play{display:none;}
-.pc-play-btn.is-playing .icon-pause{display:flex;}
-.pc-ring{position:absolute;inset:0;transform:rotate(-90deg);}
-.pc-ring-bg{fill:none;stroke:rgba(255,255,255,.14);stroke-width:2.5;}
+/* Gentle breathing glow while tilawat is actually playing — the one cue
+   that instantly reads as "this is alive right now" even glanced at from
+   across the room, without being distracting like a hard blink/pulse. */
+.pc-play-btn.is-playing::before{
+  animation:pc-breathe 2.4s ease-in-out infinite;
+}
+@keyframes pc-breathe{
+  0%,100%{box-shadow:0 3px 12px rgba(217,180,94,.4), inset 0 1px 1px rgba(255,255,255,.5), 0 0 0 0 rgba(217,180,94,.35);}
+  50%{box-shadow:0 3px 16px rgba(217,180,94,.55), inset 0 1px 1px rgba(255,255,255,.5), 0 0 0 7px rgba(217,180,94,0);}
+}
+@media (prefers-reduced-motion: reduce){
+  .pc-play-btn.is-playing::before{animation:none;}
+}
+
+/* Play/pause icon morph — both icons are stacked and cross-fade + scale
+   instead of an instant display:none swap, so toggling feels intentional. */
+.pc-play-btn svg.icon-play,.pc-play-btn svg.icon-pause{
+  position:absolute;z-index:1;color:var(--player-accent-text, var(--teal-deep));
+  transition:opacity .22s ease, transform .22s cubic-bezier(.34,1.56,.64,1);
+}
+.pc-play-btn .icon-play{opacity:1;transform:scale(1) rotate(0deg);}
+.pc-play-btn .icon-pause{opacity:0;transform:scale(.5) rotate(-45deg);pointer-events:none;}
+.pc-play-btn.is-playing .icon-play{opacity:0;transform:scale(.5) rotate(45deg);pointer-events:none;}
+.pc-play-btn.is-playing .icon-pause{opacity:1;transform:scale(1) rotate(0deg);}
+
+.pc-ring{position:absolute;inset:0;transform:rotate(-90deg);z-index:1;filter:drop-shadow(0 0 2px rgba(217,180,94,.5));}
+.pc-ring-bg{fill:none;stroke:rgba(255,255,255,.16);stroke-width:2.5;}
 .pc-ring-fg{
-  fill:none;stroke:var(--player-accent-bg, var(--gold));stroke-width:2.5;stroke-linecap:round;
+  fill:none;stroke:var(--player-accent-bg, var(--gold));stroke-width:2.75;stroke-linecap:round;
   stroke-dasharray:125.6;stroke-dashoffset:125.6;transition:stroke-dashoffset .25s linear;
 }
+
+/* Buffering: a two-tone conic spinner instead of a plain border-spin, plus a
+   faint shimmer disc underneath so a stalled/offline load still feels like
+   "working on it" rather than a frozen UI. */
 .buffer-ring{
-  position:absolute;inset:-4px;border-radius:50%;border:2.5px solid transparent;border-top-color:var(--gold);
-  opacity:0;transition:opacity .15s;z-index:2;
+  position:absolute;inset:-5px;border-radius:50%;z-index:2;
+  opacity:0;transition:opacity .2s ease;
+  background:conic-gradient(from 0deg, transparent 0%, var(--player-accent-bg, var(--gold)) 28%, transparent 60%);
+  -webkit-mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
+  mask:radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px));
 }
-.player-bar.buffering .pc-play-btn .buffer-ring{opacity:1;animation:spin .8s linear infinite;}
+.player-bar.buffering .pc-play-btn .buffer-ring{opacity:1;animation:spin .9s linear infinite;}
+@media (prefers-reduced-motion: reduce){
+  .player-bar.buffering .pc-play-btn .buffer-ring{animation:none;opacity:.6;}
+}
+
+/* Tap ripple: a short-lived expanding ring, triggered by JS adding/removing
+   .rippling on pointerdown so every tap gets tactile feedback. */
+.pc-play-btn .pc-ripple{
+  position:absolute;inset:0;border-radius:50%;z-index:3;pointer-events:none;
+  background:radial-gradient(circle, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 70%);
+  opacity:0;transform:scale(.6);
+}
+.pc-play-btn.rippling .pc-ripple{animation:pc-ripple .45s ease-out;}
+@keyframes pc-ripple{
+  0%{opacity:.65;transform:scale(.5);}
+  100%{opacity:0;transform:scale(1.35);}
+}
 
 .player-info{
   flex:1;min-width:0;background:none;border:none;color:inherit;text-align:right;
