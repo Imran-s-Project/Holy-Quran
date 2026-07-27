@@ -69,7 +69,7 @@ async function runAutoOfflineLoop(){
   if(!autoOfflineNotifiedStart && startCursor === 0){
     autoOfflineNotifiedStart = true;
     if(typeof showToast === 'function'){
-      showToast('📖 আরও ভালো অফলাইন অভিজ্ঞতার জন্য ব্যাকগ্রাউন্ডে কুরআন সংরক্ষণ শুরু হয়েছে');
+      showToast('আপনাদের সুবিধার জন্য সম্পূর্ণ অটো অফলাইন সাপোর্ট সুবিধা করা হয়েছে');
     }
   }
 
