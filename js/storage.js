@@ -10,6 +10,7 @@ const state = {
   playIndex: -1,
   isPlaying: false,
   playbackRate: 1,
+  repeatMode: 'off', // 'off' | 'ayah' (loop the current ayah) | 'surah' (loop the current surah)
   history: [],
   offlineSurahs: [],
   language: 'bn',
@@ -26,9 +27,6 @@ const state = {
   notes: {},
   searchCount: 0,
   ramadanMode: false,
-  ramadanAutoSet: false,       // true when ramadanMode was turned on/off by auto hijri-month detection, not the user
-  ramadanLastCheck: null,      // YYYY-MM-DD (local) of the last auto hijri-month check, so we only call the API once/day
-  ramadanLastHijriMonth: null, // last hijri month number (1-12) seen by the auto check
   theme: 'emerald', // see THEMES in js/app.js for the full list + metadata
   taraweeh: { goal: RAMADAN_DEFAULT_RAKAT_GOAL, days: {} },
   // ---- Account / cloud-sync related (see js/auth.js) ----
@@ -83,6 +81,7 @@ const LS_KEYS = {
   history: 'qr_history',
   offlineSurahs: 'qr_offline_surahs',
   playbackRate: 'qr_playback_rate',
+  repeatMode: 'qr_repeat_mode',
   language: 'qr_language',
   translationEdition: 'qr_translation_edition',
   translationEditions: 'qr_translation_editions_cache',
@@ -100,9 +99,6 @@ const LS_KEYS = {
   searchCount: 'qr_search_count',
   audioSurahsPlayed: 'qr_audio_surahs_played',
   ramadanMode: 'qr_ramadan_mode',
-  ramadanAutoSet: 'qr_ramadan_auto_set',
-  ramadanLastCheck: 'qr_ramadan_last_check',
-  ramadanLastHijriMonth: 'qr_ramadan_last_hijri_month',
   theme: 'qr_theme',
   taraweeh: 'qr_taraweeh',
   ayahsRead: 'qr_ayahs_read',
@@ -160,6 +156,11 @@ function loadPrefs(){
   try{
     const r = parseFloat(IDBKV.get(LS_KEYS.playbackRate));
     if(r && r > 0) state.playbackRate = r;
+  }catch(e){}
+
+  try{
+    const rm = IDBKV.get(LS_KEYS.repeatMode);
+    if(rm === 'off' || rm === 'ayah' || rm === 'surah') state.repeatMode = rm;
   }catch(e){}
 
   try{
@@ -238,13 +239,6 @@ function loadPrefs(){
   try{
     state.ramadanMode = IDBKV.get(LS_KEYS.ramadanMode) === '1';
   }catch(e){}
-
-  try{ state.ramadanAutoSet = IDBKV.get(LS_KEYS.ramadanAutoSet) === '1'; }catch(e){ state.ramadanAutoSet = false; }
-  try{ state.ramadanLastCheck = IDBKV.get(LS_KEYS.ramadanLastCheck) || null; }catch(e){ state.ramadanLastCheck = null; }
-  try{
-    const n = parseInt(IDBKV.get(LS_KEYS.ramadanLastHijriMonth), 10);
-    state.ramadanLastHijriMonth = Number.isInteger(n) ? n : null;
-  }catch(e){ state.ramadanLastHijriMonth = null; }
 
   try{
     const th = IDBKV.get(LS_KEYS.theme);
@@ -507,13 +501,6 @@ function surahsActuallyReadCount(){
 function saveRamadanMode(){
   try{ IDBKV.set(LS_KEYS.ramadanMode, state.ramadanMode ? '1' : '0'); }catch(e){}
 }
-function saveRamadanAutoState(){
-  try{
-    IDBKV.set(LS_KEYS.ramadanAutoSet, state.ramadanAutoSet ? '1' : '0');
-    IDBKV.set(LS_KEYS.ramadanLastCheck, state.ramadanLastCheck || '');
-    IDBKV.set(LS_KEYS.ramadanLastHijriMonth, String(state.ramadanLastHijriMonth ?? ''));
-  }catch(e){}
-}
 function saveTaraweeh(){
   try{ IDBKV.set(LS_KEYS.taraweeh, JSON.stringify(state.taraweeh)); }catch(e){}
   queueCloudSync();
@@ -537,6 +524,10 @@ function saveLastRead(){
 }
 function savePlaybackRate(){
   try{ IDBKV.set(LS_KEYS.playbackRate, String(state.playbackRate)); }catch(e){}
+}
+
+function saveRepeatMode(){
+  try{ IDBKV.set(LS_KEYS.repeatMode, state.repeatMode); }catch(e){}
 }
 
 // ---------- Listening history ----------
