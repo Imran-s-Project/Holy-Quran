@@ -52,13 +52,25 @@ const THEMES = [
 
 // Bump the version suffix any time app-shell files change so the service
 // worker picks up a fresh copy instead of serving a stale cached version.
-const SW_VERSION = 'v157';
+const SW_VERSION = 'v158';
 const SHELL_CACHE_NAME = `qr-shell-${SW_VERSION}`;
 const API_CACHE_NAME = `qr-api-${SW_VERSION}`;
 const AUDIO_CACHE_NAME = `qr-audio-${SW_VERSION}`;
 const FONT_CACHE_NAME = `qr-fonts-${SW_VERSION}`;
 
-const APP_SHELL_FILES = [
+// ---------- Tiered offline precache ----------
+// Only what's needed for the app to open, show the home screen, and read/
+// listen to a surah goes into the install-time precache (APP_SHELL_CORE).
+// Everything else (auth, theme builder, hadith, qibla, ramadan, stats,
+// share-card, download manager, translation help, non-default UI
+// languages, surah info/benefits, transliteration) is NOT force-downloaded
+// on install — it's still fully cached for offline use the first time its
+// own <script> tag is actually fetched, because sw.js's fetch handler
+// already does cache-first for every same-origin request regardless of
+// this list. Trimming this list only changes what's proactively downloaded
+// before the listener has done anything, cutting the first-install payload
+// by roughly the size of those deferred files.
+const APP_SHELL_CORE = [
   './',
   './index.html',
   './manifest.json',
@@ -88,9 +100,26 @@ const APP_SHELL_FILES = [
   './css/theme-builder.css',
   './css/hadith.css',
   './js/data.js',
+  './js/i18n/bn.js',
+  './js/storage.js',
+  './js/idb.js',
+  './js/firebase-config.js',
+  './js/player.js',
+  './js/reader.js',
+  './js/sidebar.js',
+  './js/search.js',
+  './js/nav.js',
+  './js/menu.js',
+  './js/onboarding.js',
+  './js/app.js',
+  './icons/icon-192.png',
+  './icons/icon-512.png'
+];
+
+// Cached lazily on first real use instead of at install — see note above.
+const APP_SHELL_DEFERRED = [
   './js/surah-info.js',
   './js/surah-benefits.js',
-  './js/i18n/bn.js',
   './js/i18n/en.js',
   './js/i18n/ar.js',
   './js/i18n/ur.js',
@@ -104,18 +133,12 @@ const APP_SHELL_FILES = [
   './js/i18n/zh.js',
   './js/i18n/fa.js',
   './js/i18n/ms.js',
-  './js/storage.js',
-  './js/idb.js',
   './js/transliteration.js',
-  './js/firebase-config.js',
   './js/emailjs-config.js',
   './js/otp.js',
   './js/auth.js',
+  './js/reset-password.js',
   './js/push.js',
-  './js/player.js',
-  './js/reader.js',
-  './js/sidebar.js',
-  './js/search.js',
   './js/topics.js',
   './js/planner.js',
   './js/stats.js',
@@ -125,18 +148,16 @@ const APP_SHELL_FILES = [
   './js/ramadan.js',
   './js/tajweed.js',
   './js/qibla.js',
-  './js/nav.js',
-  './js/menu.js',
   './js/translation-help.js',
   './js/download-manager.js',
   './js/theme-builder.js',
   './js/hadith.js',
-  './js/donation-banner.js',
-  './js/onboarding.js',
-  './js/app.js',
-  './icons/icon-192.png',
-  './icons/icon-512.png'
+  './js/donation-banner.js'
 ];
+
+// sw.js installs APP_SHELL_CORE only. Kept as one combined list too, in case
+// anything elsewhere still expects the full historical APP_SHELL_FILES name.
+const APP_SHELL_FILES = APP_SHELL_CORE;
 
 const bnDigits = ['০','১','২','৩','৪','৫','৬','৭','৮','৯'];
 function toBn(n){ return String(n).split('').map(d => /[0-9]/.test(d) ? bnDigits[+d] : d).join(''); }
