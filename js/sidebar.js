@@ -11,6 +11,7 @@ async function fetchSurahList(){
     state.surahList = data.data;
     renderSurahList(container);
     renderHomeExtras();
+    if(typeof initAutoOfflineCache === 'function') initAutoOfflineCache();
   }catch(e){
     if(container) container.innerHTML = `<div class="error-box">Could not load the surah list.<br><button onclick="fetchSurahList()">Try again.</button></div>`;
   }
