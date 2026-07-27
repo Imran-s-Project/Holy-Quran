@@ -396,8 +396,8 @@ function renderReader({header, showBismillah, surahInfo, surahBenefits, ayahs}){
         <div class="translit-text">${typeof transliterateArabic === 'function' ? transliterateArabic(a.arabic) : ''}</div>
         ${translationsHtml}
         <div class="ayah-actions">
-          <button class="play-toggle" data-key="${key}">▶ Listen.</button>
-          <button class="${isBookmarked?'bookmarked':''}" onclick="toggleBookmark('${key}', this)">${isBookmarked?'★ Reserved':'☆ Save'}</button>
+          <button class="play-toggle" data-key="${key}"><i class="fa-solid fa-play"></i> শুনুন</button>
+          <button class="${isBookmarked?'bookmarked':''}" onclick="toggleBookmark('${key}', this)">${isBookmarked?'★ সংরক্ষিত':'☆ সংরক্ষণ'}</button>
           <button class="note-toggle-btn${noteText?' has-note':''}" data-note-key="${key}">${noteText?'📝 নোট দেখুন':'🖊 নোট লিখুন'}</button>
         </div>
         <div class="note-preview-wrap" data-note-wrap="${key}">
