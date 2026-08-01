@@ -179,3 +179,73 @@
 .profile-danger-zone-title{color:#C0392B;font-size:12.5px;font-weight:700;letter-spacing:.3px;display:flex;align-items:center;gap:6px;margin-bottom:6px;}
 .profile-danger-zone-desc{margin:0 0 12px;color:var(--ink-soft);font-size:12px;line-height:1.6;}
 .profile-delete-confirm-btn{background:#C0392B !important;border-color:#C0392B !important;}
+
+/* ==== Profile modal v2 — hero header, view/edit modes, completeness,
+   badge showcase, mini heatmap, micro-interactions ==== */
+
+/* No app-modal-head bar on this one — the hero cover replaces it, so the
+   close button floats over the cover instead. */
+.profile-modal-v2{position:relative;}
+.profile-modal-v2 .app-modal-body{padding-top:0;}
+.profile-modal-close-abs{
+  position:absolute;top:10px;right:10px;z-index:5;width:32px;height:32px;border-radius:50%;
+  background:rgba(10,20,17,.32);color:#fff;border:none;display:flex;align-items:center;justify-content:center;
+  font-size:14px;cursor:pointer;backdrop-filter:blur(2px);
+}
+.profile-modal-close-abs:active{background:rgba(10,20,17,.5);}
+
+/* ---- Hero: gradient cover bleeding to the modal edges + overlapping avatar ---- */
+.profile-hero{position:relative;text-align:center;margin:0 -18px 4px;padding:0 18px;}
+.profile-hero-cover{
+  height:64px;margin:0 -18px;
+  background:linear-gradient(135deg,var(--teal) 0%,var(--teal-deep) 65%,var(--gold) 145%);
+  border-radius:var(--modal-radius,var(--radius)) var(--modal-radius,var(--radius)) 0 0;
+}
+.profile-hero-avatar-wrap{display:flex;justify-content:center;margin-top:-38px;position:relative;z-index:2;}
+.profile-hero-avatar{
+  width:84px;height:84px;font-size:32px;
+  box-shadow:0 0 0 4px var(--parchment),0 8px 20px -8px rgba(0,0,0,.35);
+  transition:transform .15s ease;
+}
+.avatar-pop{animation:avatarPop .35s cubic-bezier(.34,1.56,.64,1);}
+@keyframes avatarPop{0%{transform:scale(1);}45%{transform:scale(1.15);}100%{transform:scale(1);}}
+.profile-hero-name{font-family:'Noto Serif Bengali',serif;font-weight:700;font-size:19px;color:var(--ink);margin-top:10px;}
+.profile-hero-position{font-size:12.5px;color:var(--ink-soft);margin-top:2px;}
+.profile-hero .profile-joined{justify-content:center;margin-top:8px;}
+
+/* ---- Profile completeness bar (reuses .badges-summary-bar/-fill for the
+   animated fill + gradient look already defined for the badges progress) ---- */
+.profile-completion-row{margin:16px 2px 14px;}
+.profile-completion-label{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);margin-bottom:6px;}
+.profile-completion-label span:last-child{font-weight:700;color:var(--ink);font-family:'Noto Serif Bengali',serif;}
+
+/* ---- View mode: bio + info chips ---- */
+.profile-view-card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px;}
+.profile-bio-text{margin:0 0 10px;font-size:13.5px;line-height:1.7;color:var(--ink);}
+.profile-bio-text:last-child{margin-bottom:0;}
+.profile-chip-row{display:flex;flex-wrap:wrap;gap:8px;}
+.profile-chip{display:flex;align-items:center;gap:6px;background:var(--parchment);border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-size:12px;color:var(--ink-soft);}
+.profile-chip i{color:var(--gold);font-size:11px;}
+.profile-empty-hint{margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.6;text-align:center;padding:4px 2px;}
+
+.profile-edit-toggle-btn{width:100%;justify-content:center;margin-bottom:16px;box-sizing:border-box;}
+
+/* ---- Edit mode form ---- */
+.profile-edit-form{margin-bottom:16px;}
+.profile-edit-btn-row{display:flex;gap:10px;margin-top:4px;}
+.profile-edit-btn-row .settings-btn{width:auto;flex:0 0 auto;justify-content:center;padding:0 18px;}
+.profile-save-btn{flex:1;margin:0;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .25s ease;}
+.profile-save-success{background:var(--gold) !important;color:var(--teal-deep) !important;}
+
+/* ---- Badge showcase link (also styles the equivalent "See all" link on
+   the stats page, which previously had no color of its own) ---- */
+.badges-head a{color:var(--teal);font-size:12.5px;font-weight:600;text-decoration:none;}
+body.theme-dark-accent .badges-head a{color:var(--gold);}
+.badges-head a:active{opacity:.7;}
+
+.profile-mini-heatmap{margin-bottom:4px;}
+
+@media (max-width:380px){
+  .profile-hero-avatar{width:74px;height:74px;font-size:28px;}
+  .profile-hero-name{font-size:17px;}
+}
