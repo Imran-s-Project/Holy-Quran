@@ -46,34 +46,106 @@ body.theme-dark-accent .week-day.today{color:var(--gold);}
 body.theme-dark-accent .badge-card.unlocked .badge-progress-v2{color:var(--gold);}
 
 
-/* ---- Stats: account strip / sign-up prompt ---- */
+/* ---- Stats: account strip / sign-up prompt (modern hero card) ---- */
 .section-title-sm{font-family:'Noto Serif Bengali',serif;font-weight:700;font-size:14px;color:var(--ink-soft);margin:18px 4px 8px;}
-.account-strip{display:flex;align-items:center;gap:12px;}
-.account-strip-clickable{
-  display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer;
-  background:none;border:none;padding:0;text-align:left;font:inherit;color:inherit;
+
+.stats-card.account-strip{
+  position:relative;overflow:hidden;
+  display:flex;align-items:center;gap:10px;
+  background:linear-gradient(135deg,var(--teal) 0%,var(--teal-deep) 100%);
+  border:none;border-radius:calc(var(--radius) + 8px);
+  padding:14px 14px 14px 12px;
+  box-shadow:0 10px 26px -12px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08);
+  transition:transform .18s ease,box-shadow .18s ease;
 }
-.account-strip-chevron{color:var(--ink-soft);font-size:12px;flex-shrink:0;}
+@media (hover:hover) and (pointer:fine){
+  .stats-card.account-strip:hover{transform:translateY(-2px);box-shadow:0 14px 30px -12px rgba(0,0,0,.46),inset 0 1px 0 rgba(255,255,255,.1);}
+}
+.stats-card.account-strip::before{
+  content:'';position:absolute;top:-46px;right:-28px;width:150px;height:150px;border-radius:50%;
+  background:radial-gradient(circle,var(--gold) 0%,transparent 70%);opacity:.22;pointer-events:none;
+}
+.stats-card.account-strip::after{
+  content:'';position:absolute;bottom:-52px;left:-24px;width:120px;height:120px;border-radius:50%;
+  background:radial-gradient(circle,var(--gold-soft) 0%,transparent 70%);opacity:.14;pointer-events:none;
+}
+
+.account-strip-clickable{
+  position:relative;z-index:1;
+  display:flex;align-items:center;gap:12px;flex:1;min-width:0;cursor:pointer;
+  background:none;border:none;padding:0;text-align:left;font:inherit;
+  -webkit-tap-highlight-color:transparent;transition:opacity .15s ease;
+}
+.account-strip-clickable:active{opacity:.82;}
+
+.account-avatar-ring{
+  flex-shrink:0;width:54px;height:54px;border-radius:50%;padding:2.5px;
+  background:linear-gradient(135deg,var(--gold) 0%,var(--gold-soft) 100%);
+  box-shadow:0 4px 12px rgba(0,0,0,.28);
+  transition:transform .18s ease;
+}
+.stats-card.account-strip:hover .account-avatar-ring{transform:scale(1.04);}
 .account-avatar{
-  width:46px;height:46px;border-radius:50%;background:var(--teal);color:var(--gold-soft);
+  width:100%;height:100%;border-radius:50%;background:var(--teal-deep);color:var(--gold-soft);
   display:flex;align-items:center;justify-content:center;font-family:'Noto Serif Bengali',serif;
-  font-weight:700;font-size:18px;flex-shrink:0;
+  font-weight:700;font-size:19px;line-height:1;
 }
 .account-info{flex:1;min-width:0;}
-.account-name{font-weight:700;font-family:'Noto Serif Bengali',serif;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.account-email{font-size:12px;color:var(--ink-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.account-name{
+  font-weight:700;font-family:'Noto Serif Bengali',serif;font-size:15.5px;color:#FFFFFF;letter-spacing:.2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.account-email{
+  margin-top:3px;display:flex;align-items:center;gap:5px;
+  font-size:12px;color:var(--gold-soft);opacity:.85;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.account-email i{font-size:10px;flex-shrink:0;}
+.account-email span{overflow:hidden;text-overflow:ellipsis;}
+
+.account-strip-chevron-wrap{
+  flex-shrink:0;width:30px;height:30px;border-radius:50%;
+  background:rgba(255,255,255,.12);
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .15s ease,background .15s ease;
+}
+.account-strip-clickable:active .account-strip-chevron-wrap{background:rgba(255,255,255,.22);transform:translateX(2px);}
+.account-strip-chevron{color:var(--gold-soft);font-size:11.5px;}
+
 .account-logout-btn{
-  background:var(--panel);border:1px solid var(--line);color:var(--ink-soft);border-radius:10px;
-  width:38px;height:38px;flex-shrink:0;cursor:pointer;
+  position:relative;z-index:1;flex-shrink:0;
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);color:var(--gold-soft);
+  border-radius:12px;width:40px;height:40px;cursor:pointer;font-size:14px;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s ease,transform .15s ease;
 }
-.auth-prompt-card{text-align:center;}
-.auth-prompt-text{font-size:13.5px;color:var(--ink-soft);line-height:1.6;margin-bottom:14px;}
+.account-logout-btn:active{background:rgba(255,255,255,.22);transform:scale(.94);}
+
+.auth-prompt-card{
+  position:relative;overflow:hidden;text-align:center;
+  background:linear-gradient(135deg,var(--teal) 0%,var(--teal-deep) 100%);
+  border:none;border-radius:calc(var(--radius) + 8px);
+  padding:22px 18px;box-shadow:0 10px 26px -12px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.08);
+}
+.auth-prompt-card::before{
+  content:'';position:absolute;top:-46px;right:-28px;width:150px;height:150px;border-radius:50%;
+  background:radial-gradient(circle,var(--gold) 0%,transparent 70%);opacity:.2;pointer-events:none;
+}
+.auth-prompt-icon{
+  position:relative;z-index:1;width:48px;height:48px;margin:0 auto 12px;border-radius:50%;
+  background:linear-gradient(135deg,var(--gold) 0%,var(--gold-soft) 100%);color:var(--teal-deep);
+  display:flex;align-items:center;justify-content:center;font-size:19px;
+  box-shadow:0 4px 12px rgba(0,0,0,.28);
+}
+.auth-prompt-text{position:relative;z-index:1;font-size:13.5px;color:var(--gold-soft);opacity:.95;line-height:1.65;margin-bottom:16px;}
 .auth-cta-btn{
-  width:100%;background:var(--teal);color:var(--sage);border:none;border-radius:999px;
+  position:relative;z-index:1;width:100%;
+  background:linear-gradient(135deg,var(--gold) 0%,var(--gold-soft) 100%);
+  color:var(--teal-deep);border:none;border-radius:999px;
   padding:14px 18px;font-family:'Hind Siliguri',sans-serif;font-size:15px;font-weight:700;
-  cursor:pointer;
+  cursor:pointer;box-shadow:0 6px 16px -6px rgba(0,0,0,.32);transition:transform .15s ease;
 }
-.auth-cta-btn:active{opacity:.85;}
+.auth-cta-btn:active{opacity:.9;transform:scale(.98);}
 
 /* ---- Stats: lifetime activity ---- */
 .lifetime-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:6px;}
