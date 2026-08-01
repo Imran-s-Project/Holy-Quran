@@ -529,6 +529,79 @@ function formatJoinDateBn(iso){
   return `${toBn(d.getDate())} ${months[d.getMonth()]}, ${toBn(d.getFullYear())}`;
 }
 
+// Optional fields counted toward the "profile completeness" ring — order
+// doesn't matter, just used as a denominator + for the view-card chip list.
+const PROFILE_OPTIONAL_FIELDS = [
+  { key:'position',      icon:'id-badge',      label:'পদবি' },
+  { key:'phone',         icon:'phone',         label:'ফোন' },
+  { key:'district',      icon:'location-dot',  label:'এলাকা' },
+  { key:'birthDate',     icon:'cake-candles',  label:'জন্ম তারিখ', fmt:(v)=>formatJoinDateBn(v) },
+  { key:'favoriteQari',  icon:'microphone',    label:'প্রিয় ক্বারী' },
+  { key:'favoriteSurah', icon:'bookmark',      label:'প্রিয় সূরা' }
+];
+function profileCompletionPct(u, avatarIconVal){
+  const flags = [!!(u.bio && u.bio.trim()), !!avatarIconVal, ...PROFILE_OPTIONAL_FIELDS.map(f => !!(u[f.key] && String(u[f.key]).trim()))];
+  const filled = flags.filter(Boolean).length;
+  return Math.round((filled / flags.length) * 100);
+}
+
+// Counts up a stat number from 0 to target with an eased animation. Digits
+// are re-rendered through toBn() every frame so it reads in Bengali numerals
+// throughout, not just at the end.
+function animateCountUp(el, target, duration){
+  duration = duration || 700;
+  if(!el) return;
+  if(!target || target <= 0){ el.textContent = toBn(0); return; }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / duration);
+    const eased = 1 - Math.pow(1 - t, 3); // ease-out-cubic
+    el.textContent = toBn(Math.round(target * eased));
+    if(t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+// Compact 8-week activity strip for the profile card, same data + level
+// logic as the full heatmap on the stats page (buildHeatmapWeeks/heatmapLevel
+// in js/stats.js), just fewer columns for a tighter card.
+function renderMiniHeatmap(activity){
+  if(typeof heatmapLevel !== 'function') return '';
+  const weeksBack = 8;
+  const today = new Date();
+  const endDow = today.getDay();
+  const gridEnd = new Date(today); gridEnd.setDate(today.getDate() + (6 - endDow));
+  const totalDays = weeksBack * 7;
+  const gridStart = new Date(gridEnd); gridStart.setDate(gridEnd.getDate() - (totalDays - 1));
+  const days = [];
+  let maxMin = 1;
+  for(let i=0;i<totalDays;i++){
+    const d = new Date(gridStart); d.setDate(gridStart.getDate()+i);
+    const key = d.toISOString().slice(0,10);
+    const min = Math.floor((activity[key]||0)/60);
+    if(min > maxMin) maxMin = min;
+    days.push({ key, min, future: d > today });
+  }
+  const weeks = [];
+  for(let w=0; w<weeksBack; w++) weeks.push(days.slice(w*7, w*7+7));
+  const activeDays = days.filter(d => !d.future && d.min > 0).length;
+  return `
+    <div class="stats-card heatmap-card profile-mini-heatmap">
+      <div class="stats-top-row" style="margin-bottom:8px;">
+        <div class="stats-label">গত ৮ সপ্তাহের কার্যকলাপ</div>
+        <div class="stats-label">${toBn(activeDays)} সক্রিয় দিন</div>
+      </div>
+      <div class="heatmap-grid">
+        ${weeks.map(week => `<div class="heatmap-col">${week.map(d => {
+          if(d.future) return `<div class="heatmap-cell heatmap-future"></div>`;
+          const lvl = heatmapLevel(d.min, maxMin);
+          return `<div class="heatmap-cell heatmap-lv${lvl}" title="${d.key}: ${d.min}m"></div>`;
+        }).join('')}</div>`).join('')}
+      </div>
+      <div class="heatmap-legend"><span>কম</span><span class="heatmap-cell heatmap-lv0"></span><span class="heatmap-cell heatmap-lv1"></span><span class="heatmap-cell heatmap-lv2"></span><span class="heatmap-cell heatmap-lv3"></span><span class="heatmap-cell heatmap-lv4"></span><span>বেশি</span></div>
+    </div>`;
+}
+
 function openProfileModal(){
   const user = state.user;
   if(!user) return; // profile modal only makes sense for a signed-in user
@@ -546,80 +619,138 @@ function openProfileModal(){
   const badgeTotal = (typeof BADGES !== 'undefined') ? BADGES.length : 0;
   const badgeUnlocked = (typeof unlockedBadgesCount === 'function') ? unlockedBadgesCount() : 0;
   const ayahCount = (typeof ayahsReadCount === 'function') ? ayahsReadCount() : 0;
+  const bestStreak = Math.max(state.bestStreak||0, streak);
+  const completion = profileCompletionPct(user, avatarIcon);
+
+  // Top badges to showcase in the compact grid: unlocked-first, then
+  // closest-to-unlock — same ordering rule as the stats page showcase.
+  const topBadges = (typeof BADGES !== 'undefined') ? BADGES.slice().sort((a,b) => {
+    const au = a.progress() >= a.goal, bu = b.progress() >= b.goal;
+    if(au !== bu) return au ? -1 : 1;
+    return (b.progress()/b.goal) - (a.progress()/a.goal);
+  }).slice(0, 4) : [];
+
+  const filledChips = PROFILE_OPTIONAL_FIELDS.filter(f => user[f.key] && String(user[f.key]).trim());
+  const hasBio = !!(user.bio && user.bio.trim());
 
   const wrap = document.createElement('div');
   wrap.className = 'app-modal';
   wrap.id = 'profileModal';
   wrap.style.display = 'flex';
   wrap.innerHTML = `
-    <div class="app-modal-box profile-modal-box">
-      <div class="app-modal-head"><h3><i class="fa-solid fa-user"></i> প্রোফাইল</h3><button class="app-modal-close" id="profileClose">✕</button></div>
-      <div class="app-modal-body">
-        <div class="profile-avatar-row">
-          <div class="profile-avatar-lg" id="profileAvatarPreview" style="background:${avatarColor}">${avatarGlyph(user)}</div>
+    <div class="app-modal-box profile-modal-box profile-modal-v2">
+      <button class="app-modal-close profile-modal-close-abs" id="profileClose" aria-label="বন্ধ করুন">✕</button>
+      <div class="app-modal-body profile-modal-body-v2">
 
-          <button type="button" class="profile-avatar-toggle" id="avatarToggle" aria-expanded="false" aria-controls="avatarGridWrap">
-            <span>অ্যাভাটার বেছে নিন</span>
-            <i class="fa-solid fa-chevron-down profile-avatar-toggle-icon" id="avatarToggleIcon"></i>
-          </button>
-          <div class="profile-avatar-grid" id="avatarGridWrap">
-            <button type="button" class="profile-avatar-tile none-tile${avatarIcon?'':' active'}" data-icon="" data-color="" aria-label="ইনিশিয়াল ব্যবহার করুন">Aa</button>
-            ${PROFILE_AVATARS.map(a => `<button type="button" class="profile-avatar-tile${a.icon===avatarIcon?' active':''}" data-icon="${a.icon}" data-color="${a.color}" style="background:${a.color}" aria-label="avatar"><i class="fa-solid fa-${a.icon}"></i></button>`).join('')}
+        <!-- ---- Hero: cover + overlapping avatar + name/position ---- -->
+        <div class="profile-hero">
+          <div class="profile-hero-cover"></div>
+          <div class="profile-hero-avatar-wrap">
+            <div class="profile-avatar-lg profile-hero-avatar" id="profileAvatarPreview" style="background:${avatarColor}">${avatarGlyph(user)}</div>
+          </div>
+          <div class="profile-hero-name" id="viewHeroName">${escapeHtml(user.name||'')}</div>
+          <div class="profile-hero-position" id="viewHeroPosition"${user.position ? '' : ' style="display:none"'}>${escapeHtml(user.position||'')}</div>
+          ${user.joinedAt ? `<div class="profile-joined"><i class="fa-regular fa-calendar"></i> যোগদান করেছেন: ${formatJoinDateBn(user.joinedAt)}</div>` : ''}
+        </div>
+
+        <!-- ---- Profile completeness ---- -->
+        <div class="profile-completion-row">
+          <div class="profile-completion-label"><span>প্রোফাইল সম্পূর্ণতা</span><span id="completionPctText">${toBn(completion)}%</span></div>
+          <div class="badges-summary-bar"><div class="badges-summary-fill" id="completionFill" style="width:0%"></div></div>
+        </div>
+
+        <!-- ---- View mode: bio + info chips ---- -->
+        <div class="profile-view-card" id="profileViewCard">
+          ${hasBio ? `<p class="profile-bio-text" id="viewBioText">${escapeHtml(user.bio)}</p>` : ''}
+          ${filledChips.length ? `<div class="profile-chip-row" id="viewChipRow">${filledChips.map(f => `<div class="profile-chip"><i class="fa-solid fa-${f.icon}"></i><span>${escapeHtml(f.fmt ? f.fmt(user[f.key]) : user[f.key])}</span></div>`).join('')}</div>` : ''}
+          ${(!hasBio && !filledChips.length) ? `<p class="profile-empty-hint" id="viewEmptyHint">আপনার সম্পর্কে কিছু তথ্য যোগ করুন — এটি প্রোফাইলকে আরও সম্পূর্ণ করে তুলবে।</p>` : ''}
+        </div>
+
+        <button type="button" class="settings-btn profile-action-btn profile-edit-toggle-btn" id="profEditToggleBtn">
+          <i class="fa-solid fa-pen-to-square"></i><span>প্রোফাইল সম্পাদনা করুন</span>
+        </button>
+
+        <!-- ---- Edit mode: avatar picker + full form (collapsed by default) ---- -->
+        <div class="profile-edit-form" id="profileEditForm" style="display:none">
+          <div class="profile-avatar-row">
+            <button type="button" class="profile-avatar-toggle" id="avatarToggle" aria-expanded="false" aria-controls="avatarGridWrap">
+              <span>অ্যাভাটার বেছে নিন</span>
+              <i class="fa-solid fa-chevron-down profile-avatar-toggle-icon" id="avatarToggleIcon"></i>
+            </button>
+            <div class="profile-avatar-grid" id="avatarGridWrap">
+              <button type="button" class="profile-avatar-tile none-tile${avatarIcon?'':' active'}" data-icon="" data-color="" aria-label="ইনিশিয়াল ব্যবহার করুন">Aa</button>
+              ${PROFILE_AVATARS.map(a => `<button type="button" class="profile-avatar-tile${a.icon===avatarIcon?' active':''}" data-icon="${a.icon}" data-color="${a.color}" style="background:${a.color}" aria-label="avatar"><i class="fa-solid fa-${a.icon}"></i></button>`).join('')}
+            </div>
+
+            <div class="profile-field-label" style="margin-top:4px;">ইনিশিয়ালের রং</div>
+            <div class="profile-color-swatches">
+              ${PROFILE_AVATAR_COLORS.map(c => `<button type="button" class="profile-color-dot${c===avatarColor && !avatarIcon?' active':''}" data-color="${c}" style="background:${c}" aria-label="avatar color"></button>`).join('')}
+            </div>
           </div>
 
-          <div class="profile-field-label" style="margin-top:4px;">ইনিশিয়ালের রং</div>
-          <div class="profile-color-swatches">
-            ${PROFILE_AVATAR_COLORS.map(c => `<button type="button" class="profile-color-dot${c===avatarColor && !avatarIcon?' active':''}" data-color="${c}" style="background:${c}" aria-label="avatar color"></button>`).join('')}
+          <label class="profile-field-label" for="profName">নাম</label>
+          <input class="auth-field" id="profName" type="text" value="${escapeHtml(user.name||'')}" placeholder="নাম">
+
+          <label class="profile-field-label" for="profPosition">পদবি (ঐচ্ছিক)</label>
+          <input class="auth-field" id="profPosition" type="text" value="${escapeHtml(user.position||'')}" placeholder="যেমন: শিক্ষার্থী, ইমাম, ইত্যাদি">
+
+          <label class="profile-field-label" for="profEmail">ইমেইল</label>
+          <input class="auth-field" id="profEmail" type="text" value="${escapeHtml(user.email||'')}" disabled>
+
+          <label class="profile-field-label" for="profPhone">ফোন নম্বর (ঐচ্ছিক)</label>
+          <input class="auth-field" id="profPhone" type="tel" value="${escapeHtml(user.phone||'')}" placeholder="যেমন: ০১৭xxxxxxxx">
+
+          <label class="profile-field-label" for="profDistrict">ঠিকানা/এলাকা (ঐচ্ছিক)</label>
+          <input class="auth-field" id="profDistrict" type="text" value="${escapeHtml(user.district||'')}" placeholder="যেমন: ঢাকা">
+
+          <label class="profile-field-label" for="profBirthDate">জন্ম তারিখ (ঐচ্ছিক)</label>
+          <input class="auth-field" id="profBirthDate" type="date" value="${escapeHtml(user.birthDate||'')}">
+
+          <label class="profile-field-label" for="profBio">সংক্ষিপ্ত পরিচিতি (ঐচ্ছিক)</label>
+          <textarea class="auth-field" id="profBio" rows="3" placeholder="নিজের সম্পর্কে কিছু কথা">${escapeHtml(user.bio||'')}</textarea>
+
+          <label class="profile-field-label" for="profQari">প্রিয় ক্বারী (ঐচ্ছিক)</label>
+          <input class="auth-field" id="profQari" type="text" value="${escapeHtml(user.favoriteQari||'')}" placeholder="যেমন: মিশারি রাশিদ">
+
+          <label class="profile-field-label" for="profSurah">প্রিয় সূরা (ঐচ্ছিক)</label>
+          <input class="auth-field" id="profSurah" type="text" value="${escapeHtml(user.favoriteSurah||'')}" placeholder="যেমন: সূরা আর-রাহমান">
+
+          <div class="profile-error" id="profError"></div>
+          <div class="profile-edit-btn-row">
+            <button type="button" class="settings-btn profile-action-btn" id="profCancelBtn">বাতিল</button>
+            <button class="auth-cta-btn profile-save-btn" id="profSaveBtn"><span id="profSaveBtnLabel">সংরক্ষণ করুন</span></button>
           </div>
         </div>
 
-        <label class="profile-field-label" for="profName">নাম</label>
-        <input class="auth-field" id="profName" type="text" value="${escapeHtml(user.name||'')}" placeholder="নাম">
-
-        <label class="profile-field-label" for="profPosition">পদবি (ঐচ্ছিক)</label>
-        <input class="auth-field" id="profPosition" type="text" value="${escapeHtml(user.position||'')}" placeholder="যেমন: শিক্ষার্থী, ইমাম, ইত্যাদি">
-
-        <label class="profile-field-label" for="profEmail">ইমেইল</label>
-        <input class="auth-field" id="profEmail" type="text" value="${escapeHtml(user.email||'')}" disabled>
-
-        <label class="profile-field-label" for="profPhone">ফোন নম্বর (ঐচ্ছিক)</label>
-        <input class="auth-field" id="profPhone" type="tel" value="${escapeHtml(user.phone||'')}" placeholder="যেমন: ০১৭xxxxxxxx">
-
-        <label class="profile-field-label" for="profDistrict">ঠিকানা/এলাকা (ঐচ্ছিক)</label>
-        <input class="auth-field" id="profDistrict" type="text" value="${escapeHtml(user.district||'')}" placeholder="যেমন: ঢাকা">
-
-        <label class="profile-field-label" for="profBirthDate">জন্ম তারিখ (ঐচ্ছিক)</label>
-        <input class="auth-field" id="profBirthDate" type="date" value="${escapeHtml(user.birthDate||'')}">
-
-        <label class="profile-field-label" for="profBio">সংক্ষিপ্ত পরিচিতি (ঐচ্ছিক)</label>
-        <textarea class="auth-field" id="profBio" rows="3" placeholder="নিজের সম্পর্কে কিছু কথা">${escapeHtml(user.bio||'')}</textarea>
-
-        <label class="profile-field-label" for="profQari">প্রিয় ক্বারী (ঐচ্ছিক)</label>
-        <input class="auth-field" id="profQari" type="text" value="${escapeHtml(user.favoriteQari||'')}" placeholder="যেমন: মিশারি রাশিদ">
-
-        <label class="profile-field-label" for="profSurah">প্রিয় সূরা (ঐচ্ছিক)</label>
-        <input class="auth-field" id="profSurah" type="text" value="${escapeHtml(user.favoriteSurah||'')}" placeholder="যেমন: সূরা আর-রাহমান">
-
-        ${user.joinedAt ? `<div class="profile-joined"><i class="fa-regular fa-calendar"></i> যোগদান করেছেন: ${formatJoinDateBn(user.joinedAt)}</div>` : ''}
-
-        <div class="profile-error" id="profError"></div>
-        <button class="auth-cta-btn" id="profSaveBtn">সংরক্ষণ করুন</button>
-
+        <!-- ---- Stats ---- -->
+        <div class="section-title-sm">পরিসংখ্যান</div>
         <div class="profile-stats-grid">
           <div class="profile-stat-box">
-            <div class="profile-stat-val">${toBn(badgeUnlocked)}/${toBn(badgeTotal)}</div>
+            <div class="profile-stat-val"><span id="statBadges">০</span>/${toBn(badgeTotal)}</div>
             <div class="profile-stat-lbl">ব্যাজ</div>
           </div>
           <div class="profile-stat-box">
-            <div class="profile-stat-val">${toBn(Math.max(state.bestStreak||0, streak))}</div>
+            <div class="profile-stat-val"><span id="statStreak">০</span></div>
             <div class="profile-stat-lbl">সেরা স্ট্রিক</div>
           </div>
           <div class="profile-stat-box">
-            <div class="profile-stat-val">${toBn(ayahCount)}</div>
+            <div class="profile-stat-val"><span id="statAyah">০</span></div>
             <div class="profile-stat-lbl">আয়াত পাঠ</div>
           </div>
         </div>
 
+        <!-- ---- Mini badge showcase ---- -->
+        ${topBadges.length ? `
+        <div class="badges-head">
+          <span>ব্যাজসমূহ</span>
+          <a href="javascript:void(0)" id="profSeeAllBadges">সবগুলো দেখুন</a>
+        </div>
+        <div class="badges-grid">${topBadges.map(badgeCardHtml).join('')}</div>` : ''}
+
+        <!-- ---- Mini activity heatmap ---- -->
+        ${renderMiniHeatmap(activity)}
+
+        <div class="section-title-sm">অ্যাকাউন্ট তথ্য</div>
         <div class="profile-meta-box">
           <div class="profile-meta-row">
             <div class="profile-meta-text">
@@ -637,6 +768,7 @@ function openProfileModal(){
           </div>
         </div>
 
+        <div class="section-title-sm">নিরাপত্তা ও অ্যাকাউন্ট</div>
         <div class="profile-actions">
           ${isPasswordUser ? '<button class="settings-btn profile-action-btn" id="profChangePass"><i class="fa-solid fa-key"></i><span>পাসওয়ার্ড পরিবর্তন করুন</span></button>' : ''}
           ${isPasswordUser && !isGoogleLinked ? '<button class="settings-btn profile-action-btn" id="profLinkGoogle"><i class="fa-brands fa-google"></i><span>Google অ্যাকাউন্ট লিংক করুন</span></button>' : ''}
@@ -654,6 +786,31 @@ function openProfileModal(){
     </div>`;
   document.body.appendChild(wrap);
 
+  // ---- Micro-interaction: animate stat numbers + completion bar in ----
+  requestAnimationFrame(() => {
+    animateCountUp(document.getElementById('statBadges'), badgeUnlocked);
+    animateCountUp(document.getElementById('statStreak'), bestStreak);
+    animateCountUp(document.getElementById('statAyah'), ayahCount);
+    const fill = document.getElementById('completionFill');
+    if(fill) setTimeout(() => { fill.style.width = completion + '%'; }, 60);
+  });
+
+  // ---- View <-> edit mode toggle ----
+  const viewCard = document.getElementById('profileViewCard');
+  const editForm = document.getElementById('profileEditForm');
+  const editToggleBtn = document.getElementById('profEditToggleBtn');
+  const heroNameEl = document.getElementById('viewHeroName');
+  const heroPositionEl = document.getElementById('viewHeroPosition');
+  const setEditMode = (on) => {
+    editForm.style.display = on ? 'block' : 'none';
+    viewCard.style.display = on ? 'none' : 'block';
+    editToggleBtn.style.display = on ? 'none' : 'flex';
+  };
+  editToggleBtn.onclick = () => setEditMode(true);
+
+  const cancelBtn = document.getElementById('profCancelBtn');
+  if(cancelBtn) cancelBtn.onclick = () => setEditMode(false);
+
   // Avatar picker starts collapsed — just the current pick + a toggle —
   // so the full 21-icon grid doesn't dump onto the screen at once. Tapping
   // the label row or the round preview itself opens/closes it.
@@ -669,7 +826,7 @@ function openProfileModal(){
   avatarToggleBtn.onclick = () => setAvatarGridOpen(!avatarGridWrap.classList.contains('open'));
   if(avatarPreviewEl){
     avatarPreviewEl.style.cursor = 'pointer';
-    avatarPreviewEl.onclick = () => setAvatarGridOpen(!avatarGridWrap.classList.contains('open'));
+    avatarPreviewEl.onclick = () => { setEditMode(true); setAvatarGridOpen(true); };
   }
 
   let pickedColor = avatarColor;
@@ -684,6 +841,16 @@ function openProfileModal(){
       : escapeHtml((user.name || user.email || '?').trim().charAt(0).toUpperCase());
   };
 
+  // Small "pop" bounce whenever a new avatar tile/color is chosen, so the
+  // preview feels alive rather than just snapping to the new value.
+  const bouncePreview = () => {
+    const preview = document.getElementById('profileAvatarPreview');
+    if(!preview) return;
+    preview.classList.remove('avatar-pop');
+    void preview.offsetWidth; // restart animation
+    preview.classList.add('avatar-pop');
+  };
+
   wrap.querySelectorAll('.profile-color-dot').forEach(btn => {
     btn.onclick = () => {
       pickedColor = btn.getAttribute('data-color');
@@ -691,6 +858,7 @@ function openProfileModal(){
       wrap.querySelectorAll('.profile-color-dot').forEach(b => b.classList.toggle('active', b === btn));
       wrap.querySelectorAll('.profile-avatar-tile').forEach(b => b.classList.toggle('active', b.classList.contains('none-tile')));
       updatePreview();
+      bouncePreview();
     };
   });
 
@@ -704,7 +872,39 @@ function openProfileModal(){
         wrap.querySelectorAll('.profile-color-dot').forEach(b => b.classList.remove('active'));
       }
       updatePreview();
+      bouncePreview();
     };
+  });
+
+  // Live-update hero name/position + completion bar as the user types, so
+  // the "card" behind the form already looks right before they even save.
+  const nameInput = document.getElementById('profName');
+  const positionInput = document.getElementById('profPosition');
+  if(nameInput) nameInput.oninput = () => { heroNameEl.textContent = nameInput.value.trim() || (user.email||''); };
+  if(positionInput) positionInput.oninput = () => {
+    const v = positionInput.value.trim();
+    heroPositionEl.textContent = v;
+    heroPositionEl.style.display = v ? '' : 'none';
+  };
+  ['profPhone','profDistrict','profBirthDate','profBio','profQari','profSurah'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.addEventListener('input', () => {
+      const draft = {
+        bio: document.getElementById('profBio').value,
+        position: positionInput.value,
+        phone: document.getElementById('profPhone').value,
+        district: document.getElementById('profDistrict').value,
+        birthDate: document.getElementById('profBirthDate').value,
+        favoriteQari: document.getElementById('profQari').value,
+        favoriteSurah: document.getElementById('profSurah').value
+      };
+      const pct = profileCompletionPct(draft, pickedIcon);
+      const fill = document.getElementById('completionFill');
+      const pctText = document.getElementById('completionPctText');
+      if(fill) fill.style.width = pct + '%';
+      if(pctText) pctText.textContent = toBn(pct) + '%';
+    });
   });
 
   const remove = () => wrap.remove();
@@ -725,18 +925,24 @@ function openProfileModal(){
     if(!name){ errBox.textContent = 'নাম দিন।'; return; }
 
     const btn = document.getElementById('profSaveBtn');
-    const original = btn.textContent;
-    btn.disabled = true; btn.textContent = 'সংরক্ষণ হচ্ছে...';
+    const label = document.getElementById('profSaveBtnLabel');
+    btn.disabled = true; label.textContent = 'সংরক্ষণ হচ্ছে...';
     try{
       await saveProfileChanges({ name, position, avatarColor: pickedColor, avatarIcon: pickedIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah });
+      // Success micro-interaction: swap the button to a checkmark for a
+      // beat before closing, instead of just vanishing the modal.
+      btn.classList.add('profile-save-success');
+      label.innerHTML = '<i class="fa-solid fa-check"></i> সংরক্ষিত হয়েছে';
       showToast('প্রোফাইল আপডেট হয়েছে');
-      remove();
+      setTimeout(remove, 550);
     }catch(e){
       errBox.textContent = 'কিছু একটা সমস্যা হয়েছে, আবার চেষ্টা করুন।';
-    }finally{
-      btn.disabled = false; btn.textContent = original;
+      btn.disabled = false; label.textContent = 'সংরক্ষণ করুন';
     }
   };
+
+  const seeAllBadgesBtn = document.getElementById('profSeeAllBadges');
+  if(seeAllBadgesBtn) seeAllBadgesBtn.onclick = () => { if(typeof openAllBadgesModal === 'function') openAllBadgesModal(); };
 
   const changePassBtn = document.getElementById('profChangePass');
   if(changePassBtn) changePassBtn.onclick = () => { remove(); confirmPasswordChange(user); };
