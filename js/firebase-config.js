@@ -13,6 +13,12 @@
 // this browser's localStorage on each device. See buildSyncSnapshot() in
 // js/auth.js if you want to double-check exactly what gets uploaded.
 //
+// As of the login-history feature (js/session-security.js), Firestore also
+// stores, per real sign-in, a session record under users/{uid}/sessions/{id}:
+// browser + OS + device type, an IP-based approximate city/country/ISP, and
+// timestamps. It never stores WiFi names or SIM/carrier names — no website
+// can read those, by browser design.
+//
 // Also make sure, in the Firebase Console, you have:
 //   1) Authentication → Sign-in method → enabled "Email/Password" and "Google".
 //   2) Firestore Database → created a database (production or test mode).
@@ -24,6 +30,13 @@
 //     match /databases/{database}/documents {
 //       match /users/{uid} {
 //         allow read, write: if request.auth != null && request.auth.uid == uid;
+//         // Login-history / active-session records (see js/session-security.js).
+//         // Same owner-only rule — nobody but this account can ever read or
+//         // revoke its own session list, including the "log out everywhere"
+//         // link sent by email.
+//         match /sessions/{sessionId} {
+//           allow read, write: if request.auth != null && request.auth.uid == uid;
+//         }
 //       }
 //     }
 //   }
