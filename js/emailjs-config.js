@@ -1,53 +1,60 @@
-// ---------- Firebase project config ----------
-// Paste the config object from Firebase Console → Project settings →
-// General → "Your apps" → SDK setup and configuration → Config.
-// This is the ONLY file you need to edit to connect the app to your own
-// Firebase project. Everything else (auth screens, Firestore sync logic)
-// is already wired up in js/auth.js.
+// ---------- EmailJS config (for OTP + login-alert emails) ----------
+// Used to email a 6-digit verification code before two sensitive
+// actions: changing the password and permanently deleting the account.
+// Also used to email a "new login" security alert (see js/session-security.js)
+// every time someone actually signs in (not on every page reload).
+// Everything else in the app works fine even if this is left unconfigured
+// (the "পরিবর্তন করুন" / "মুছে ফেলুন" buttons will just show a toast saying
+// OTP isn't set up yet, and login alerts are silently skipped).
 //
-// PRIVACY NOTE: Firestore only ever receives aggregate progress numbers —
-// daily reading seconds (by date), search count, best streak, unique
-// ayahs-read count, unique surahs-listened count, and the taraweeh rakat
-// tracker. It NEVER receives bookmarks, notes, reading history, last-read
-// position, or which specific surahs/ayahs were read — those stay only in
-// this browser's localStorage on each device. See buildSyncSnapshot() in
-// js/auth.js if you want to double-check exactly what gets uploaded.
+// ---------- One-time setup (free, ~5 minutes) ----------
+// 1) Go to https://www.emailjs.com and create a free account.
+// 2) Email Services → Add New Service → connect Gmail (or any provider).
+//    Copy the "Service ID" it gives you → paste below as serviceId.
+// 3) Email Templates → Create New Template. Don't use the default plain
+//    text editor — click the "</>" (Code Editor) icon top-right, then
+//    paste the full HTML from email-templates/otp-template.html (it's
+//    already themed to match this app and uses the exact variable names
+//    below). Subject line: {{purpose}} — যাচাইকরণ কোড
+//      {{to_email}}   — recipient address
+//      {{to_name}}    — recipient's name
+//      {{otp_code}}   — the 6-digit code
+//      {{purpose}}    — e.g. "পাসওয়ার্ড পরিবর্তন" or "অ্যাকাউন্ট মুছে ফেলা"
+//    Copy the "Template ID" → paste below as templateId.
+// 4) Account → General → copy your "Public Key" → paste below as publicKey.
+// 5) Save this file, redeploy. That's it — no server, no Cloud Functions.
 //
-// As of the login-history feature (js/session-security.js), Firestore also
-// stores, per real sign-in, a session record under users/{uid}/sessions/{id}:
-// browser + OS + device type, an IP-based approximate city/country/ISP, and
-// timestamps. It never stores WiFi names or SIM/carrier names — no website
-// can read those, by browser design.
+// ---------- Second template: login-alert emails (optional but recommended) ----------
+// 1) Email Templates → Create New Template (a second, separate one from the OTP template).
+//    Code Editor → paste the full HTML from email-templates/login-alert-template.html.
+//    Subject line: নতুন লগইন সনাক্ত হয়েছে — কুরআন বাংলা
+//      {{to_email}}         — recipient address
+//      {{to_name}}          — recipient's name
+//      {{device_text}}      — e.g. "Google Chrome · Android · মোবাইল"
+//      {{location_text}}    — e.g. "Dhaka, Bangladesh" (IP-based, approximate)
+//      {{isp_text}}         — IP-based ISP/network name (approximate — this is the
+//                              closest a browser can get to "which SIM/operator";
+//                              exact WiFi names or carrier names aren't accessible
+//                              to any website, by browser design)
+//      {{ip_text}}          — IP address
+//      {{login_time}}       — when the login happened
+//      {{new_device_text}}  — extra warning line, only filled in for a never-seen-before device
+//      {{revoke_url}}       — one-click "log me out everywhere" link (opens the app,
+//                              asks the person to sign in if needed, then instantly
+//                              revokes every active session including this new one)
+//    Copy the "Template ID" → paste below as loginAlertTemplateId.
+// 2) Save this file, redeploy. If loginAlertTemplateId is left as "PASTE_YOUR..."
+//    below, login-alert emails are simply skipped — nothing else breaks.
 //
-// Also make sure, in the Firebase Console, you have:
-//   1) Authentication → Sign-in method → enabled "Email/Password" and "Google".
-//   2) Firestore Database → created a database (production or test mode).
-//   3) Firestore → Rules → something like the rules below, so each user can
-//      only read/write their own document:
-//
-//   rules_version = '2';
-//   service cloud.firestore {
-//     match /databases/{database}/documents {
-//       match /users/{uid} {
-//         allow read, write: if request.auth != null && request.auth.uid == uid;
-//         // Login-history / active-session records (see js/session-security.js).
-//         // Same owner-only rule — nobody but this account can ever read or
-//         // revoke its own session list, including the "log out everywhere"
-//         // link sent by email.
-//         match /sessions/{sessionId} {
-//           allow read, write: if request.auth != null && request.auth.uid == uid;
-//         }
-//       }
-//     }
-//   }
+// PRIVACY NOTE: the public key is safe to ship in client code by design
+// (that's how EmailJS works) — but EmailJS's free tier is rate-limited
+// per month, and anyone with your service/template IDs could technically
+// trigger sends. For a personal/small-app project this is an acceptable
+// tradeoff, same as the rest of this app's client-only Firebase setup.
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCZXiL61tFvvjLD8PyWppskbvC2H9pI32w",
-  authDomain: "quranbangla2.firebaseapp.com",
-  projectId: "quranbangla2",
-  storageBucket: "quranbangla2.firebasestorage.app",
-  messagingSenderId: "562329456797",
-  appId: "1:562329456797:web:6f13a79c3b4b693a7b0474",
-  measurementId: "G-C65WWC3WQQ"
+const EMAILJS_CONFIG = {
+  publicKey: "xZa-M7wzLohf1ciYM",
+  serviceId: "service_iop4lfq",
+  templateId: "template_m8kjuwq",
+  loginAlertTemplateId: "template_zogfyaz"
 };
