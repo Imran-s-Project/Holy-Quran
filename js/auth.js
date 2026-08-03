@@ -30,8 +30,13 @@ function initAuth(){
   authUnsub = fbAuth.onAuthStateChanged(async (fbUser) => {
     if(fbUser){
       await onSignedIn(fbUser);
+      // লগইন হিস্টোরি রেকর্ড + ডিভাইস শনাক্তকরণ + দূর থেকে লগ-আউট শোনা (js/session-security.js)
+      if(typeof recordSessionActivity === 'function') recordSessionActivity(fbUser);
+      // ইমেইলের "সব ডিভাইস থেকে লগ-আউট করুন" লিংক থেকে এসে থাকলে সেটা এখানেই সম্পন্ন হয়
+      if(typeof runLogoutAllDevicesFlow === 'function') runLogoutAllDevicesFlow(fbUser);
     } else {
       state.user = null;
+      if(typeof stopSessionHeartbeat === 'function') stopSessionHeartbeat();
       refreshCurrentView();
     }
   });
@@ -180,6 +185,7 @@ function showAuthScreen(name){
 // ---------- Actions ----------
 async function handleGoogleSignIn(){
   const provider = new firebase.auth.GoogleAuthProvider();
+  if(typeof markFreshLoginIntent === 'function') markFreshLoginIntent(); // লগইন হিস্টোরি/ইমেইল অ্যালার্টের জন্য — js/session-security.js
   try{
     await fbAuth.signInWithPopup(provider);
     closeAuthFlow();
@@ -210,6 +216,7 @@ async function handleEmailSignup(){
   const btn = document.getElementById('suSubmit');
   const btnOriginal = btn.innerHTML;
   btn.disabled = true; btn.textContent = 'অপেক্ষা করুন...';
+  if(typeof markFreshLoginIntent === 'function') markFreshLoginIntent(); // লগইন হিস্টোরি/ইমেইল অ্যালার্টের জন্য
   try{
     const cred = await fbAuth.createUserWithEmailAndPassword(email, pass);
     await cred.user.updateProfile({ displayName: name });
@@ -233,6 +240,7 @@ async function handleEmailLogin(){
 
   const btn = document.getElementById('liSubmit');
   btn.disabled = true; btn.textContent = 'অপেক্ষা করুন...';
+  if(typeof markFreshLoginIntent === 'function') markFreshLoginIntent(); // লগইন হিস্টোরি/ইমেইল অ্যালার্টের জন্য
   try{
     await fbAuth.signInWithEmailAndPassword(email, pass);
     closeAuthFlow();
@@ -774,6 +782,7 @@ function openProfileModal(){
           ${isPasswordUser && !isGoogleLinked ? '<button class="settings-btn profile-action-btn" id="profLinkGoogle"><i class="fa-brands fa-google"></i><span>Google অ্যাকাউন্ট লিংক করুন</span></button>' : ''}
           ${isGoogleLinked && isPasswordUser ? '<button class="settings-btn profile-action-btn" id="profUnlinkGoogle"><i class="fa-brands fa-google"></i><span>Google আনলিংক করুন</span></button>' : ''}
           ${isGoogleLinked && !isPasswordUser ? '<div class="profile-linked-badge"><i class="fa-brands fa-google"></i><span>Google দিয়ে সাইন-ইন করা</span></div>' : ''}
+          <button class="settings-btn profile-action-btn" id="profLoginHistoryBtn"><i class="fa-solid fa-clock-rotate-left"></i><span>লগইন হিস্টোরি ও সক্রিয় সেশন</span></button>
           <button class="settings-btn profile-action-btn" id="profLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i><span>লগ আউট করুন</span></button>
         </div>
 
@@ -966,6 +975,9 @@ function openProfileModal(){
 
   const unlinkGoogleBtn = document.getElementById('profUnlinkGoogle');
   if(unlinkGoogleBtn) unlinkGoogleBtn.onclick = () => { remove(); confirmUnlinkGoogle(); };
+
+  const loginHistoryBtn = document.getElementById('profLoginHistoryBtn');
+  if(loginHistoryBtn) loginHistoryBtn.onclick = () => { if(typeof openSessionHistoryModal === 'function') openSessionHistoryModal(); };
 
   document.getElementById('profLogoutBtn').onclick = () => { remove(); confirmLogout(); };
   document.getElementById('profDeleteBtn').onclick = () => { remove(); confirmDeleteAccount(); };
