@@ -250,36 +250,68 @@ body.theme-dark-accent .badges-head a{color:var(--gold);}
   .profile-hero-name{font-size:17px;}
 }
 
-/* ---- সংযুক্ত অ্যাকাউন্ট (Google/Facebook/X/GitHub/Microsoft) — আইকনসহ কার্ড গ্রিড ---- */
-.profile-social-grid{
-  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px; margin: 0 0 18px;
+/* ---- সংযুক্ত অ্যাকাউন্ট: প্রোফাইলে শুধু একটা "একাউন্ট লিংক করুন" সামারি
+   বাটন — ট্যাপ করলে আলাদা মডালে পূর্ণ প্ল্যাটফর্ম লিস্ট খোলে ---- */
+.profile-link-account-btn{
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  border: 1px solid var(--line); border-radius: 14px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--teal) 9%, var(--panel)), var(--panel));
+  padding: 12px 14px; margin: 0 0 18px; cursor: pointer; text-align: left;
+  transition: border-color .15s ease, transform .12s ease;
 }
-.profile-social-item{
-  display: flex; align-items: center; gap: 8px;
-  border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
-  padding: 9px 10px;
+.profile-link-account-btn:active{ transform: scale(.985); }
+body.theme-dark-accent .profile-link-account-btn{
+  background: linear-gradient(135deg, color-mix(in srgb, var(--gold) 10%, var(--panel)), var(--panel));
 }
-.profile-social-item.is-linked{ border-color: color-mix(in srgb, var(--brand-color) 40%, var(--line)); }
-.profile-social-icon{
-  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+.profile-link-account-icon{
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+  background: color-mix(in srgb, var(--teal) 16%, transparent); color: var(--teal);
+}
+body.theme-dark-accent .profile-link-account-icon{ background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); }
+.profile-link-account-text{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.profile-link-account-title{ font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.profile-link-account-sub{ font-size: 11.5px; color: var(--ink-soft); }
+.profile-link-account-chevron{ color: var(--ink-soft); font-size: 13px; flex-shrink: 0; }
+
+/* ---- "একাউন্ত লিংক করুন" মডাল: Google/Facebook/X/GitHub/Microsoft-এর
+   আধুনিক লিস্ট, প্রতিটা রো-তে আইকন + স্ট্যাটাস + অ্যাকশন পিল ---- */
+.link-accounts-modal-box{ max-width: 420px; }
+.link-accounts-hint{ margin: 0 0 14px; font-size: 12.5px; line-height: 1.5; color: var(--ink-soft); }
+.link-account-list{ display: flex; flex-direction: column; gap: 8px; }
+.link-account-row{
+  display: flex; align-items: center; gap: 11px;
+  border: 1px solid var(--line); border-radius: 14px; background: var(--panel);
+  padding: 11px 12px; transition: border-color .15s ease;
+}
+.link-account-row.is-linked{ border-color: color-mix(in srgb, var(--brand-color) 45%, var(--line)); }
+.link-account-icon{
+  width: 38px; height: 38px; border-radius: 11px; flex-shrink: 0;
   display: flex; align-items: center; justify-content: center;
-  background: color-mix(in srgb, var(--brand-color) 14%, transparent);
-  color: var(--brand-color); font-size: 14px;
+  background: color-mix(in srgb, var(--brand-color) 15%, transparent);
+  color: var(--brand-color); font-size: 16px;
 }
-.profile-social-info{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.profile-social-name{ font-size: 12px; font-weight: 700; color: var(--ink); }
-.profile-social-state{ font-size: 10px; color: var(--ink-soft); }
-.profile-social-item.is-linked .profile-social-state{ color: var(--brand-color); font-weight: 600; }
-.profile-social-action{
-  font-size: 10.5px; font-weight: 700; padding: 5px 9px; border-radius: 20px;
-  border: 1px solid var(--line); background: none; color: var(--ink-soft); cursor: pointer; flex-shrink: 0;
+.link-account-info{ flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.link-account-name{ font-size: 13.5px; font-weight: 700; color: var(--ink); }
+.link-account-state{ font-size: 11px; color: var(--ink-soft); display: flex; align-items: center; gap: 4px; }
+.link-account-row.is-linked .link-account-state{ color: var(--brand-color); font-weight: 600; }
+.link-account-row.is-linked .link-account-state i{ font-size: 10px; }
+.link-account-action{
+  display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+  font-size: 11.5px; font-weight: 700; padding: 7px 12px; border-radius: 20px;
+  border: 1px solid var(--line); background: none; color: var(--ink-soft); cursor: pointer;
+  transition: opacity .12s ease, transform .12s ease;
 }
-.profile-social-action-primary{ color: var(--brand-color); border-color: color-mix(in srgb, var(--brand-color) 45%, var(--line)); }
-.profile-social-action:active{ opacity: .7; }
-.profile-social-action:disabled{ opacity: .5; }
-.profile-social-locked{ color: var(--ink-soft); font-size: 12px; flex-shrink: 0; padding: 0 4px; }
+.link-account-action i{ font-size: 10px; }
+.link-account-action-link{ color: var(--brand-color); border-color: color-mix(in srgb, var(--brand-color) 45%, var(--line)); }
+.link-account-action-unlink{ color: var(--danger, #c0392b); border-color: color-mix(in srgb, var(--danger, #c0392b) 35%, var(--line)); }
+.link-account-action:active{ transform: scale(.94); }
+.link-account-action:disabled, .link-account-action.is-busy{ opacity: .55; pointer-events: none; }
+.link-account-locked{ color: var(--ink-soft); font-size: 13px; flex-shrink: 0; padding: 0 6px; }
 
 @media (max-width: 380px){
-  .profile-social-grid{ grid-template-columns: 1fr; }
+  .link-account-name{ font-size: 12.5px; }
+  .link-account-action span{ display: none; }
+  .link-account-action{ padding: 8px; }
+  .link-account-action i{ font-size: 12px; }
 }
