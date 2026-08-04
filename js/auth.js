@@ -11,6 +11,7 @@ let authUnsub = null;
 let cloudSyncTimer = null;
 let cloudSyncInFlight = false;
 let suppressNextSync = false; // true while we're applying a just-downloaded cloud snapshot
+let cloudSyncPending = false; // true when the last push failed/was skipped (offline) and is waiting to retry
 
 function isFirebaseConfigured(){
   return typeof FIREBASE_CONFIG !== 'undefined'
@@ -462,23 +463,49 @@ function buildSyncSnapshot(){
 
 // Debounced push so rapid local changes (e.g. scrolling through several
 // ayahs, ticking off several taraweeh days) collapse into one Firestore write.
+//
+// Offline resilience: if the device is offline (or the write fails for any
+// other reason) the change is never silently dropped — cloudSyncPending is
+// set, a small pill in the header reflects it (see updateConnStatusPill in
+// js/app.js), and the moment the browser fires 'online' again the pending
+// snapshot is pushed immediately, no user action needed.
 function queueCloudSync(immediate){
   if(!firebaseReady || !state.user || suppressNextSync) return;
   clearTimeout(cloudSyncTimer);
   const run = async () => {
     if(cloudSyncInFlight) return;
+    if(!navigator.onLine){
+      // নেটওয়ার্ক কল চেষ্টা করে সময় নষ্ট না করে সরাসরি pending রাখা — 'online'
+      // ইভেন্টে নিচের লিসেনার নিজে থেকেই আবার পাঠাবে।
+      cloudSyncPending = true;
+      if(typeof updateConnStatusPill === 'function') updateConnStatusPill();
+      return;
+    }
     cloudSyncInFlight = true;
+    const wasPending = cloudSyncPending;
     try{
       await fbDb.collection('users').doc(state.user.uid).set({
         progress: buildSyncSnapshot(),
         updatedAt: firebase.firestore.FieldValue.serverTimestamp()
       }, { merge: true });
-    }catch(e){ console.warn('Cloud sync failed:', e); }
+      cloudSyncPending = false;
+      if(wasPending && typeof showToast === 'function') showToast('✅ আপনার অগ্রগতি আবার সিঙ্ক হয়ে গেছে');
+    }catch(e){
+      console.warn('Cloud sync failed:', e);
+      cloudSyncPending = true; // অস্থায়ী নেটওয়ার্ক/সার্ভার সমস্যা — পরে আবার চেষ্টা হবে
+    }
     cloudSyncInFlight = false;
+    if(typeof updateConnStatusPill === 'function') updateConnStatusPill();
   };
   if(immediate) run();
   else cloudSyncTimer = setTimeout(run, 2500);
 }
+
+// ইন্টারনেট আবার ফিরে এলে, কোনো সিঙ্ক বাকি থাকলে সাথে সাথেই আবার পাঠানো হয় —
+// ইউজারকে কিছু করতে হয় না, কোনো অগ্রগতি হারায় না।
+window.addEventListener('online', () => {
+  if(cloudSyncPending && state.user) queueCloudSync(true);
+});
 
 // ---------- Profile modal: view + manage everything about the account ----------
 // Opened by tapping the account strip at the top of the পরিসংখ্যান (stats) view
