@@ -590,15 +590,35 @@ function formatJoinDateBn(iso){
   return `${toBn(d.getDate())} ${months[d.getMonth()]}, ${toBn(d.getFullYear())}`;
 }
 
+// Language-aware date formatting for the profile hero/chip — Bengali gets
+// the app's own hand-formatted Bengali-numeral style, every other
+// interface language gets its own locale's date formatting via the
+// browser's Intl support (falls back to English if a locale is unknown).
+function formatJoinDate(iso, lang){
+  if(!iso) return '';
+  lang = lang || state.language;
+  if(lang === 'bn') return formatJoinDateBn(iso);
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return '';
+  try{
+    return d.toLocaleDateString(lang, { day:'numeric', month:'short', year:'numeric' });
+  }catch(e){
+    return d.toLocaleDateString('en', { day:'numeric', month:'short', year:'numeric' });
+  }
+}
+
 // Optional fields counted toward the "profile completeness" ring — order
 // doesn't matter, just used as a denominator + for the view-card chip list.
+// labelKey is resolved through tr() at render time so it always matches
+// state.language, instead of being frozen in whatever language was active
+// when this file first loaded.
 const PROFILE_OPTIONAL_FIELDS = [
-  { key:'position',      icon:'id-badge',      label:'পদবি' },
-  { key:'phone',         icon:'phone',         label:'ফোন' },
-  { key:'district',      icon:'location-dot',  label:'এলাকা' },
-  { key:'birthDate',     icon:'cake-candles',  label:'জন্ম তারিখ', fmt:(v)=>formatJoinDateBn(v) },
-  { key:'favoriteQari',  icon:'microphone',    label:'প্রিয় ক্বারী' },
-  { key:'favoriteSurah', icon:'bookmark',      label:'প্রিয় সূরা' }
+  { key:'position',      icon:'id-badge',      labelKey:'profile_label_position' },
+  { key:'phone',         icon:'phone',         labelKey:'profile_label_phone' },
+  { key:'district',      icon:'location-dot',  labelKey:'profile_label_district' },
+  { key:'birthDate',     icon:'cake-candles',  labelKey:'profile_label_birthdate', fmt:(v)=>formatJoinDate(v) },
+  { key:'favoriteQari',  icon:'microphone',    labelKey:'profile_label_qari' },
+  { key:'favoriteSurah', icon:'bookmark',      labelKey:'profile_label_surah' }
 ];
 function profileCompletionPct(u, avatarIconVal){
   const flags = [!!(u.bio && u.bio.trim()), !!avatarIconVal, ...PROFILE_OPTIONAL_FIELDS.map(f => !!(u[f.key] && String(u[f.key]).trim()))];
@@ -612,12 +632,12 @@ function profileCompletionPct(u, avatarIconVal){
 function animateCountUp(el, target, duration){
   duration = duration || 700;
   if(!el) return;
-  if(!target || target <= 0){ el.textContent = toBn(0); return; }
+  if(!target || target <= 0){ el.textContent = localNum(0); return; }
   const start = performance.now();
   const step = (now) => {
     const t = Math.min(1, (now - start) / duration);
     const eased = 1 - Math.pow(1 - t, 3); // ease-out-cubic
-    el.textContent = toBn(Math.round(target * eased));
+    el.textContent = localNum(Math.round(target * eased));
     if(t < 1) requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -649,8 +669,8 @@ function renderMiniHeatmap(activity){
   return `
     <div class="stats-card heatmap-card profile-mini-heatmap">
       <div class="stats-top-row" style="margin-bottom:8px;">
-        <div class="stats-label">গত ৮ সপ্তাহের কার্যকলাপ</div>
-        <div class="stats-label">${toBn(activeDays)} সক্রিয় দিন</div>
+        <div class="stats-label">${tr('profile_heatmap_title')}</div>
+        <div class="stats-label">${localNum(activeDays)} ${tr('profile_heatmap_active_days')}</div>
       </div>
       <div class="heatmap-grid">
         ${weeks.map(week => `<div class="heatmap-col">${week.map(d => {
@@ -659,7 +679,7 @@ function renderMiniHeatmap(activity){
           return `<div class="heatmap-cell heatmap-lv${lvl}" title="${d.key}: ${d.min}m"></div>`;
         }).join('')}</div>`).join('')}
       </div>
-      <div class="heatmap-legend"><span>কম</span><span class="heatmap-cell heatmap-lv0"></span><span class="heatmap-cell heatmap-lv1"></span><span class="heatmap-cell heatmap-lv2"></span><span class="heatmap-cell heatmap-lv3"></span><span class="heatmap-cell heatmap-lv4"></span><span>বেশি</span></div>
+      <div class="heatmap-legend"><span>${tr('profile_heatmap_low')}</span><span class="heatmap-cell heatmap-lv0"></span><span class="heatmap-cell heatmap-lv1"></span><span class="heatmap-cell heatmap-lv2"></span><span class="heatmap-cell heatmap-lv3"></span><span class="heatmap-cell heatmap-lv4"></span><span>${tr('profile_heatmap_high')}</span></div>
     </div>`;
 }
 
@@ -673,16 +693,16 @@ function renderLinkAccountRows(providerIds){
     const linked = providerIds.includes(p.id);
     const canUnlink = linked && providerIds.length > 1;
     let action = '';
-    let stateText = 'সংযুক্ত নেই';
+    let stateText = tr('profile_link_not_connected');
     let stateClass = '';
     if(linked && canUnlink){
-      stateText = 'সংযুক্ত আছে'; stateClass = 'is-linked';
-      action = `<button type="button" class="link-account-action link-account-action-unlink" data-unlink-provider="${p.id}"><i class="fa-solid fa-link-slash"></i><span>আনলিংক</span></button>`;
+      stateText = tr('profile_link_connected'); stateClass = 'is-linked';
+      action = `<button type="button" class="link-account-action link-account-action-unlink" data-unlink-provider="${p.id}"><i class="fa-solid fa-link-slash"></i><span>${tr('profile_link_unlink')}</span></button>`;
     } else if(linked && !canUnlink){
-      stateText = 'সাইন-ইন পদ্ধতি'; stateClass = 'is-linked is-locked';
-      action = `<span class="link-account-locked" title="এটি বাদ দিলে অ্যাকাউন্টে ঢোকার উপায় থাকবে না, তাই আনলিংক করা যাচ্ছে না"><i class="fa-solid fa-lock"></i></span>`;
+      stateText = tr('profile_link_signin_method'); stateClass = 'is-linked is-locked';
+      action = `<span class="link-account-locked" title="${tr('profile_link_locked_title')}"><i class="fa-solid fa-lock"></i></span>`;
     } else {
-      action = `<button type="button" class="link-account-action link-account-action-link" data-link-provider="${p.id}"><i class="fa-solid fa-plus"></i><span>লিংক করুন</span></button>`;
+      action = `<button type="button" class="link-account-action link-account-action-link" data-link-provider="${p.id}"><i class="fa-solid fa-plus"></i><span>${tr('profile_link_link')}</span></button>`;
     }
     return `
       <div class="link-account-row ${stateClass}" style="--brand-color:${p.color}">
@@ -733,7 +753,7 @@ function openProfileModal(){
   wrap.style.display = 'flex';
   wrap.innerHTML = `
     <div class="app-modal-box profile-modal-box profile-modal-v2">
-      <button class="app-modal-close profile-modal-close-abs" id="profileClose" aria-label="বন্ধ করুন">✕</button>
+      <button class="app-modal-close profile-modal-close-abs" id="profileClose" aria-label="${tr('profile_close')}">✕</button>
       <div class="app-modal-body profile-modal-body-v2">
 
         <!-- ---- Hero: cover + overlapping avatar + name/position ---- -->
@@ -744,145 +764,145 @@ function openProfileModal(){
           </div>
           <div class="profile-hero-name" id="viewHeroName">${escapeHtml(user.name||'')}</div>
           <div class="profile-hero-position" id="viewHeroPosition"${user.position ? '' : ' style="display:none"'}>${escapeHtml(user.position||'')}</div>
-          ${user.joinedAt ? `<div class="profile-joined"><i class="fa-regular fa-calendar"></i> যোগদান করেছেন: ${formatJoinDateBn(user.joinedAt)}</div>` : ''}
+          ${user.joinedAt ? `<div class="profile-joined"><i class="fa-regular fa-calendar"></i> ${tr('profile_joined')}: ${formatJoinDate(user.joinedAt)}</div>` : ''}
         </div>
 
         <!-- ---- Profile completeness ---- -->
         <div class="profile-completion-row">
-          <div class="profile-completion-label"><span>প্রোফাইল সম্পূর্ণতা</span><span id="completionPctText">${toBn(completion)}%</span></div>
+          <div class="profile-completion-label"><span>${tr('profile_completion')}</span><span id="completionPctText">${localNum(completion)}%</span></div>
           <div class="badges-summary-bar"><div class="badges-summary-fill" id="completionFill" style="width:0%"></div></div>
         </div>
 
         <!-- ---- View mode: bio + info chips ---- -->
         <div class="profile-view-card" id="profileViewCard">
           ${hasBio ? `<p class="profile-bio-text" id="viewBioText">${escapeHtml(user.bio)}</p>` : ''}
-          ${filledChips.length ? `<div class="profile-chip-row" id="viewChipRow">${filledChips.map(f => `<div class="profile-chip"><i class="fa-solid fa-${f.icon}"></i><span>${escapeHtml(f.fmt ? f.fmt(user[f.key]) : user[f.key])}</span></div>`).join('')}</div>` : ''}
-          ${(!hasBio && !filledChips.length) ? `<p class="profile-empty-hint" id="viewEmptyHint">আপনার সম্পর্কে কিছু তথ্য যোগ করুন — এটি প্রোফাইলকে আরও সম্পূর্ণ করে তুলবে।</p>` : ''}
+          ${filledChips.length ? `<div class="profile-chip-row" id="viewChipRow">${filledChips.map(f => `<div class="profile-chip" title="${escapeHtml(tr(f.labelKey))}"><i class="fa-solid fa-${f.icon}"></i><span>${escapeHtml(f.fmt ? f.fmt(user[f.key]) : user[f.key])}</span></div>`).join('')}</div>` : ''}
+          ${(!hasBio && !filledChips.length) ? `<p class="profile-empty-hint" id="viewEmptyHint">${tr('profile_empty_hint')}</p>` : ''}
         </div>
 
         <button type="button" class="settings-btn profile-action-btn profile-edit-toggle-btn" id="profEditToggleBtn">
-          <i class="fa-solid fa-pen-to-square"></i><span>প্রোফাইল সম্পাদনা করুন</span>
+          <i class="fa-solid fa-pen-to-square"></i><span>${tr('profile_edit')}</span>
         </button>
 
         <!-- ---- Edit mode: avatar picker + full form (collapsed by default) ---- -->
         <div class="profile-edit-form" id="profileEditForm" style="display:none">
           <div class="profile-avatar-row">
             <button type="button" class="profile-avatar-toggle" id="avatarToggle" aria-expanded="false" aria-controls="avatarGridWrap">
-              <span>অ্যাভাটার বেছে নিন</span>
+              <span>${tr('profile_avatar_choose')}</span>
               <i class="fa-solid fa-chevron-down profile-avatar-toggle-icon" id="avatarToggleIcon"></i>
             </button>
             <div class="profile-avatar-grid" id="avatarGridWrap">
-              <button type="button" class="profile-avatar-tile none-tile${avatarIcon?'':' active'}" data-icon="" data-color="" aria-label="ইনিশিয়াল ব্যবহার করুন">Aa</button>
+              <button type="button" class="profile-avatar-tile none-tile${avatarIcon?'':' active'}" data-icon="" data-color="" aria-label="${tr('profile_avatar_use_initial')}">Aa</button>
               ${PROFILE_AVATARS.map(a => `<button type="button" class="profile-avatar-tile${a.icon===avatarIcon?' active':''}" data-icon="${a.icon}" data-color="${a.color}" style="background:${a.color}" aria-label="avatar"><i class="fa-solid fa-${a.icon}"></i></button>`).join('')}
             </div>
 
-            <div class="profile-field-label" style="margin-top:4px;">ইনিশিয়ালের রং</div>
+            <div class="profile-field-label" style="margin-top:4px;">${tr('profile_initial_color')}</div>
             <div class="profile-color-swatches">
               ${PROFILE_AVATAR_COLORS.map(c => `<button type="button" class="profile-color-dot${c===avatarColor && !avatarIcon?' active':''}" data-color="${c}" style="background:${c}" aria-label="avatar color"></button>`).join('')}
             </div>
           </div>
 
-          <label class="profile-field-label" for="profName">নাম</label>
-          <input class="auth-field" id="profName" type="text" value="${escapeHtml(user.name||'')}" placeholder="নাম">
+          <label class="profile-field-label" for="profName">${tr('profile_field_name')}</label>
+          <input class="auth-field" id="profName" type="text" value="${escapeHtml(user.name||'')}" placeholder="${tr('profile_field_name')}">
 
-          <label class="profile-field-label" for="profPosition">পদবি (ঐচ্ছিক)</label>
-          <input class="auth-field" id="profPosition" type="text" value="${escapeHtml(user.position||'')}" placeholder="যেমন: শিক্ষার্থী, ইমাম, ইত্যাদি">
+          <label class="profile-field-label" for="profPosition">${tr('profile_field_position')}</label>
+          <input class="auth-field" id="profPosition" type="text" value="${escapeHtml(user.position||'')}" placeholder="${tr('profile_field_position_ph')}">
 
-          <label class="profile-field-label" for="profEmail">ইমেইল</label>
+          <label class="profile-field-label" for="profEmail">${tr('profile_field_email')}</label>
           <input class="auth-field" id="profEmail" type="text" value="${escapeHtml(user.email||'')}" disabled>
 
-          <label class="profile-field-label" for="profPhone">ফোন নম্বর (ঐচ্ছিক)</label>
-          <input class="auth-field" id="profPhone" type="tel" value="${escapeHtml(user.phone||'')}" placeholder="যেমন: ০১৭xxxxxxxx">
+          <label class="profile-field-label" for="profPhone">${tr('profile_field_phone')}</label>
+          <input class="auth-field" id="profPhone" type="tel" value="${escapeHtml(user.phone||'')}" placeholder="${tr('profile_field_phone_ph')}">
 
-          <label class="profile-field-label" for="profDistrict">ঠিকানা/এলাকা (ঐচ্ছিক)</label>
-          <input class="auth-field" id="profDistrict" type="text" value="${escapeHtml(user.district||'')}" placeholder="যেমন: ঢাকা">
+          <label class="profile-field-label" for="profDistrict">${tr('profile_field_district')}</label>
+          <input class="auth-field" id="profDistrict" type="text" value="${escapeHtml(user.district||'')}" placeholder="${tr('profile_field_district_ph')}">
 
-          <label class="profile-field-label" for="profBirthDate">জন্ম তারিখ (ঐচ্ছিক)</label>
+          <label class="profile-field-label" for="profBirthDate">${tr('profile_field_birthdate')}</label>
           <input class="auth-field" id="profBirthDate" type="date" value="${escapeHtml(user.birthDate||'')}">
 
-          <label class="profile-field-label" for="profBio">সংক্ষিপ্ত পরিচিতি (ঐচ্ছিক)</label>
-          <textarea class="auth-field" id="profBio" rows="3" placeholder="নিজের সম্পর্কে কিছু কথা">${escapeHtml(user.bio||'')}</textarea>
+          <label class="profile-field-label" for="profBio">${tr('profile_field_bio')}</label>
+          <textarea class="auth-field" id="profBio" rows="3" placeholder="${tr('profile_field_bio_ph')}">${escapeHtml(user.bio||'')}</textarea>
 
-          <label class="profile-field-label" for="profQari">প্রিয় ক্বারী (ঐচ্ছিক)</label>
-          <input class="auth-field" id="profQari" type="text" value="${escapeHtml(user.favoriteQari||'')}" placeholder="যেমন: মিশারি রাশিদ">
+          <label class="profile-field-label" for="profQari">${tr('profile_field_qari')}</label>
+          <input class="auth-field" id="profQari" type="text" value="${escapeHtml(user.favoriteQari||'')}" placeholder="${tr('profile_field_qari_ph')}">
 
-          <label class="profile-field-label" for="profSurah">প্রিয় সূরা (ঐচ্ছিক)</label>
-          <input class="auth-field" id="profSurah" type="text" value="${escapeHtml(user.favoriteSurah||'')}" placeholder="যেমন: সূরা আর-রাহমান">
+          <label class="profile-field-label" for="profSurah">${tr('profile_field_surah')}</label>
+          <input class="auth-field" id="profSurah" type="text" value="${escapeHtml(user.favoriteSurah||'')}" placeholder="${tr('profile_field_surah_ph')}">
 
           <div class="profile-error" id="profError"></div>
           <div class="profile-edit-btn-row">
-            <button type="button" class="settings-btn profile-action-btn" id="profCancelBtn">বাতিল</button>
-            <button class="auth-cta-btn profile-save-btn" id="profSaveBtn"><span id="profSaveBtnLabel">সংরক্ষণ করুন</span></button>
+            <button type="button" class="settings-btn profile-action-btn" id="profCancelBtn">${tr('profile_cancel')}</button>
+            <button class="auth-cta-btn profile-save-btn" id="profSaveBtn"><span id="profSaveBtnLabel">${tr('profile_save')}</span></button>
           </div>
         </div>
 
         <!-- ---- Stats ---- -->
-        <div class="section-title-sm">পরিসংখ্যান</div>
+        <div class="section-title-sm">${tr('profile_stats_title')}</div>
         <div class="profile-stats-grid">
           <div class="profile-stat-box">
-            <div class="profile-stat-val"><span id="statBadges">০</span>/${toBn(badgeTotal)}</div>
-            <div class="profile-stat-lbl">ব্যাজ</div>
+            <div class="profile-stat-val"><span id="statBadges">${localNum(0)}</span>/${localNum(badgeTotal)}</div>
+            <div class="profile-stat-lbl">${tr('profile_stat_badges')}</div>
           </div>
           <div class="profile-stat-box">
-            <div class="profile-stat-val"><span id="statStreak">০</span></div>
-            <div class="profile-stat-lbl">সেরা স্ট্রিক</div>
+            <div class="profile-stat-val"><span id="statStreak">${localNum(0)}</span></div>
+            <div class="profile-stat-lbl">${tr('profile_stat_streak')}</div>
           </div>
           <div class="profile-stat-box">
-            <div class="profile-stat-val"><span id="statAyah">০</span></div>
-            <div class="profile-stat-lbl">আয়াত পাঠ</div>
+            <div class="profile-stat-val"><span id="statAyah">${localNum(0)}</span></div>
+            <div class="profile-stat-lbl">${tr('profile_stat_ayah')}</div>
           </div>
         </div>
 
         <!-- ---- Mini badge showcase ---- -->
         ${topBadges.length ? `
         <div class="badges-head">
-          <span>ব্যাজসমূহ</span>
-          <a href="javascript:void(0)" id="profSeeAllBadges">সবগুলো দেখুন</a>
+          <span>${tr('profile_badges_title')}</span>
+          <a href="javascript:void(0)" id="profSeeAllBadges">${tr('profile_badges_seeall')}</a>
         </div>
         <div class="badges-grid">${topBadges.map(badgeCardHtml).join('')}</div>` : ''}
 
         <!-- ---- Mini activity heatmap ---- -->
         ${renderMiniHeatmap(activity)}
 
-        <div class="section-title-sm">অ্যাকাউন্ট তথ্য</div>
+        <div class="section-title-sm">${tr('profile_account_info_title')}</div>
         <div class="profile-meta-box">
           <div class="profile-meta-row">
             <div class="profile-meta-text">
-              <span class="profile-meta-label">ইউজার আইডি</span>
+              <span class="profile-meta-label">${tr('profile_uid_label')}</span>
               <code class="profile-meta-value">${escapeHtml(user.uid)}</code>
             </div>
-            <button type="button" class="profile-copy-btn" id="profUidCopy" aria-label="ইউজার আইডি কপি করুন"><i class="fa-regular fa-copy"></i></button>
+            <button type="button" class="profile-copy-btn" id="profUidCopy" aria-label="${tr('profile_uid_copy_aria')}"><i class="fa-regular fa-copy"></i></button>
           </div>
           <div class="profile-meta-row">
             <div class="profile-meta-text">
-              <span class="profile-meta-label">সাইটটি চলছে এই ঠিকানা থেকে</span>
+              <span class="profile-meta-label">${tr('profile_server_label')}</span>
               <code class="profile-meta-value">${escapeHtml(window.location.host)}</code>
             </div>
-            <button type="button" class="profile-copy-btn" id="profServerCopy" aria-label="ঠিকানা কপি করুন"><i class="fa-regular fa-copy"></i></button>
+            <button type="button" class="profile-copy-btn" id="profServerCopy" aria-label="${tr('profile_server_copy_aria')}"><i class="fa-regular fa-copy"></i></button>
           </div>
         </div>
 
-        <div class="section-title-sm">সংযুক্ত অ্যাকাউন্ট</div>
+        <div class="section-title-sm">${tr('profile_linked_title')}</div>
         <button type="button" class="profile-link-account-btn" id="profOpenLinkAccounts">
           <span class="profile-link-account-icon"><i class="fa-solid fa-link"></i></span>
           <span class="profile-link-account-text">
-            <span class="profile-link-account-title">একাউন্ট লিংক করুন</span>
-            <span class="profile-link-account-sub" id="profLinkAccountsSub">${linkedAccountCount ? `${toBn(linkedAccountCount)}টি প্ল্যাটফর্ম সংযুক্ত` : 'কোনো প্ল্যাটফর্ম সংযুক্ত নেই'}</span>
+            <span class="profile-link-account-title">${tr('profile_link_account_title')}</span>
+            <span class="profile-link-account-sub" id="profLinkAccountsSub">${linkedAccountCount ? `${localNum(linkedAccountCount)} ${tr('profile_link_sub_count_suffix')}` : tr('profile_link_sub_none')}</span>
           </span>
           <span class="profile-link-account-chevron"><i class="fa-solid fa-chevron-right"></i></span>
         </button>
 
-        <div class="section-title-sm">নিরাপত্তা ও অ্যাকাউন্ট</div>
+        <div class="section-title-sm">${tr('profile_security_title')}</div>
         <div class="profile-actions">
-          ${isPasswordUser ? '<button class="settings-btn profile-action-btn" id="profChangePass"><i class="fa-solid fa-key"></i><span>পাসওয়ার্ড পরিবর্তন করুন</span></button>' : ''}
-          <button class="settings-btn profile-action-btn" id="profLoginHistoryBtn"><i class="fa-solid fa-clock-rotate-left"></i><span>লগইন হিস্টোরি ও সক্রিয় সেশন</span></button>
-          <button class="settings-btn profile-action-btn" id="profLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i><span>লগ আউট করুন</span></button>
+          ${isPasswordUser ? `<button class="settings-btn profile-action-btn" id="profChangePass"><i class="fa-solid fa-key"></i><span>${tr('profile_change_password')}</span></button>` : ''}
+          <button class="settings-btn profile-action-btn" id="profLoginHistoryBtn"><i class="fa-solid fa-clock-rotate-left"></i><span>${tr('profile_login_history')}</span></button>
+          <button class="settings-btn profile-action-btn" id="profLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i><span>${tr('profile_logout')}</span></button>
         </div>
 
         <div class="profile-danger-zone">
-          <div class="profile-danger-zone-title"><i class="fa-solid fa-triangle-exclamation"></i> ডেঞ্জার জোন</div>
-          <p class="profile-danger-zone-desc">এই অ্যাকাউন্ট স্থায়ীভাবে মুছে ফেলা হবে। এটি আর ফিরিয়ে আনা যাবে না।</p>
-          <button class="settings-btn profile-action-btn profile-action-danger" id="profDeleteBtn"><i class="fa-solid fa-trash"></i><span>অ্যাকাউন্ট মুছে ফেলুন</span></button>
+          <div class="profile-danger-zone-title"><i class="fa-solid fa-triangle-exclamation"></i> ${tr('profile_danger_zone')}</div>
+          <p class="profile-danger-zone-desc">${tr('profile_danger_desc')}</p>
+          <button class="settings-btn profile-action-btn profile-action-danger" id="profDeleteBtn"><i class="fa-solid fa-trash"></i><span>${tr('profile_delete_account')}</span></button>
         </div>
       </div>
     </div>`;
@@ -1005,7 +1025,7 @@ function openProfileModal(){
       const fill = document.getElementById('completionFill');
       const pctText = document.getElementById('completionPctText');
       if(fill) fill.style.width = pct + '%';
-      if(pctText) pctText.textContent = toBn(pct) + '%';
+      if(pctText) pctText.textContent = localNum(pct) + '%';
     });
   });
 
@@ -1024,22 +1044,22 @@ function openProfileModal(){
     const favoriteSurah = document.getElementById('profSurah').value.trim();
     const errBox = document.getElementById('profError');
     errBox.textContent = '';
-    if(!name){ errBox.textContent = 'নাম দিন।'; return; }
+    if(!name){ errBox.textContent = tr('profile_name_required'); return; }
 
     const btn = document.getElementById('profSaveBtn');
     const label = document.getElementById('profSaveBtnLabel');
-    btn.disabled = true; label.textContent = 'সংরক্ষণ হচ্ছে...';
+    btn.disabled = true; label.textContent = tr('profile_saving');
     try{
       await saveProfileChanges({ name, position, avatarColor: pickedColor, avatarIcon: pickedIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah });
       // Success micro-interaction: swap the button to a checkmark for a
       // beat before closing, instead of just vanishing the modal.
       btn.classList.add('profile-save-success');
-      label.innerHTML = '<i class="fa-solid fa-check"></i> সংরক্ষিত হয়েছে';
-      showToast('প্রোফাইল আপডেট হয়েছে');
+      label.innerHTML = `<i class="fa-solid fa-check"></i> ${tr('profile_saved')}`;
+      showToast(tr('profile_updated_toast'));
       setTimeout(remove, 550);
     }catch(e){
-      errBox.textContent = 'কিছু একটা সমস্যা হয়েছে, আবার চেষ্টা করুন।';
-      btn.disabled = false; label.textContent = 'সংরক্ষণ করুন';
+      errBox.textContent = tr('profile_save_error');
+      btn.disabled = false; label.textContent = tr('profile_save');
     }
   };
 
@@ -1071,7 +1091,7 @@ function openProfileModal(){
 async function copyProfileValue(text, btn){
   try{
     await navigator.clipboard.writeText(text);
-    showToast('কপি করা হয়েছে');
+    showToast(tr('profile_copied'));
   }catch(e){
     try{
       const ta = document.createElement('textarea');
@@ -1082,9 +1102,9 @@ async function copyProfileValue(text, btn){
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      showToast('কপি করা হয়েছে');
+      showToast(tr('profile_copied'));
     }catch(e2){
-      showToast('কপি করা যায়নি');
+      showToast(tr('profile_copy_failed'));
     }
   }
 }
