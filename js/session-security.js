@@ -13,6 +13,11 @@
 // দেখায়, যেমন "Grameenphone Ltd") ও Network Information API (শুধু
 // Android Chrome-এ কাজ করে) দিয়ে "wifi" না "cellular" — নাম নয়, শুধু ধরন।
 //
+// লগইন-অ্যালার্ট ইমেইল: একই IP থেকে আগেও এই অ্যাকাউন্টে লগইন হয়ে থাকলে
+// দ্বিতীয়বার ইমেইল যায় না — IP বদলালেই কেবল নতুন করে সতর্কতা ইমেইল যায়
+// (দেখুন নিচে isNewIp)। প্রতিটি সেশন রেকর্ডে দেশ/অঞ্চল/টাইমজোন/লগইন-পদ্ধতি
+// (ইমেইল/Google ইত্যাদি)-ও এখন সংরক্ষিত হয়, লগইন হিস্টোরি মোডালে দেখা যায়।
+//
 // PRIVACY NOTE: এই ফাইলটি users/{uid}/sessions/{sessionId}-এ IP/লোকেশন/
 // ডিভাইস তথ্য লেখে। firebase-config.js-এর কমেন্টে থাকা Firestore rules-এ
 // এই সাবকালেকশনের জন্য owner-only rule যোগ করতে ভুলবেন না (নিচে দেখুন)।
@@ -114,7 +119,7 @@ async function fetchIpLocation(){
     if(cached) return JSON.parse(cached);
   }catch(e){}
 
-  const result = { ip: '', city: '', country: '', isp: '' };
+  const result = { ip: '', city: '', country: '', isp: '', countryCode: '', regionName: '', timezone: '', lat: null, lon: null };
   try{
     const r = await fetch('https://ipapi.co/json/');
     if(r.ok){
@@ -124,6 +129,11 @@ async function fetchIpLocation(){
         result.city = d.city || '';
         result.country = d.country_name || '';
         result.isp = d.org || '';
+        result.countryCode = d.country_code || '';
+        result.regionName = d.region || '';
+        result.timezone = d.timezone || '';
+        result.lat = typeof d.latitude === 'number' ? d.latitude : null;
+        result.lon = typeof d.longitude === 'number' ? d.longitude : null;
       }
     }
   }catch(e){ /* নেটওয়ার্ক ব্লকড বা রেট-লিমিট হতে পারে, নিচে ব্যাকআপ চেষ্টা হবে */ }
@@ -138,6 +148,11 @@ async function fetchIpLocation(){
           result.city = d2.city || '';
           result.country = d2.country || '';
           result.isp = (d2.connection && d2.connection.isp) || '';
+          result.countryCode = d2.country_code || '';
+          result.regionName = d2.region || '';
+          result.timezone = (d2.timezone && d2.timezone.id) || '';
+          result.lat = typeof d2.latitude === 'number' ? d2.latitude : null;
+          result.lon = typeof d2.longitude === 'number' ? d2.longitude : null;
         }
       }
     }catch(e){}
@@ -147,7 +162,28 @@ async function fetchIpLocation(){
   return result;
 }
 
-// ---------- Firestore-এ সেশন রেকর্ড লেখা ----------
+// ---------- লগইন পদ্ধতি (ইমেইল/পাসওয়ার্ড নাকি Google ইত্যাদি) ----------
+function getLoginMethodLabel(fbUser){
+  try{
+    const pid = (fbUser.providerData && fbUser.providerData[0] && fbUser.providerData[0].providerId) || '';
+    if(pid === 'google.com') return { text: 'Google', icon: 'fa-brands fa-google' };
+    if(pid === 'facebook.com') return { text: 'Facebook', icon: 'fa-brands fa-facebook' };
+    if(pid === 'password') return { text: 'ইমেইল/পাসওয়ার্ড', icon: 'fa-solid fa-key' };
+    return { text: pid || 'অজানা', icon: 'fa-solid fa-key' };
+  }catch(e){ return { text: 'অজানা', icon: 'fa-solid fa-key' }; }
+}
+
+// দেশ-কোড (যেমন "BD") থেকে 🇧🇩-এর মতো ফ্ল্যাগ ইমোজি বানানো — কোনো এক্সট্রা
+// লাইব্রেরি বা API ছাড়াই, শুধু ইউনিকোড রিজিওনাল ইন্ডিকেটর ব্যবহার করে।
+function countryFlagEmoji(code){
+  if(!code || code.length !== 2) return '';
+  try{
+    const base = 0x1F1E6;
+    return String.fromCodePoint(...[...code.toUpperCase()].map(c => base + (c.charCodeAt(0) - 65)));
+  }catch(e){ return ''; }
+}
+
+
 async function recordSessionActivity(fbUser){
   if(!fbDb || !fbUser) return;
   const tabSessionId = getOrCreateTabSessionId();
@@ -167,6 +203,7 @@ async function recordSessionActivity(fbUser){
   // ---- প্রকৃত, সরাসরি লগইন/সাইন-আপ অ্যাকশন ----
   const info = parseDeviceInfo();
   const loc = await fetchIpLocation();
+  const loginMethod = getLoginMethodLabel(fbUser);
 
   let isNewDevice = true;
   try{
@@ -175,13 +212,33 @@ async function recordSessionActivity(fbUser){
     isNewDevice = prior.empty;
   }catch(e){}
 
+  // ---- IP-ভিত্তিক ডুপ্লিকেট-ইমেইল প্রতিরোধ ----
+  // একই IP থেকে আগেও এই অ্যাকাউন্টে লগইন হয়ে থাকলে (অর্থাৎ পরিচিত/স্থায়ী
+  // নেটওয়ার্ক থেকেই বারবার লগইন হচ্ছে), প্রতিবারই নতুন করে "নতুন লগইন" ইমেইল
+  // পাঠানো বিরক্তিকর — তাই সেক্ষেত্রে দ্বিতীয়বার আর ইমেইল যাবে না। IP পাল্টালে
+  // (অন্য নেটওয়ার্ক/ডিভাইস/লোকেশন থেকে) তবেই নতুন করে সতর্কতা ইমেইল যাবে।
+  // IP শনাক্তই করা না গেলে (API ব্যর্থ) নিরাপদ দিকেই থাকা হয় — ইমেইল পাঠানো হয়,
+  // যেন কোনো প্রকৃত নতুন লগইন চোখ এড়িয়ে না যায়।
+  let isNewIp = true;
+  if(loc.ip){
+    try{
+      const priorIp = await fbDb.collection('users').doc(fbUser.uid).collection('sessions')
+        .where('ip', '==', loc.ip).limit(1).get();
+      isNewIp = priorIp.empty;
+    }catch(e){ isNewIp = true; }
+  }
+
   const payload = {
     deviceId,
     browser: info.browser, browserIcon: info.browserIcon,
     os: info.os, deviceType: info.deviceType, deviceIcon: info.deviceIcon, deviceLabel: info.deviceLabel,
     connectionLabel: info.connectionLabel,
     ip: loc.ip || '', city: loc.city || '', country: loc.country || '', isp: loc.isp || '',
+    countryCode: loc.countryCode || '', regionName: loc.regionName || '', timezone: loc.timezone || '',
+    lat: loc.lat, lon: loc.lon,
+    loginMethod: loginMethod.text, loginMethodIcon: loginMethod.icon,
     userAgent: info.userAgent,
+    isNewDevice, isNewIp, emailSent: isNewIp,
     createdAt: firebase.firestore.FieldValue.serverTimestamp(),
     lastActiveAt: firebase.firestore.FieldValue.serverTimestamp(),
     revoked: false
@@ -190,7 +247,7 @@ async function recordSessionActivity(fbUser){
 
   startSessionHeartbeat(fbUser.uid, tabSessionId);
   listenForRemoteLogout(fbUser.uid, tabSessionId);
-  sendNewLoginAlertEmail(fbUser, info, loc, isNewDevice);
+  sendNewLoginAlertEmail(fbUser, info, loc, isNewDevice, isNewIp);
 }
 
 // ---------- "এখন অনলাইন" প্রেজেন্স হার্টবিট ----------
@@ -264,7 +321,8 @@ function formatLoginTimeBn(d){
   return `${toBn(d.getDate())} ${months[d.getMonth()]}, ${toBn(d.getFullYear())} — ${toBn(h)}:${toBn(mm)} ${ampm}`;
 }
 
-async function sendNewLoginAlertEmail(fbUser, info, loc, isNewDevice){
+async function sendNewLoginAlertEmail(fbUser, info, loc, isNewDevice, isNewIp){
+  if(!isNewIp) return; // একই IP থেকে আগেও লগইন হয়েছে — বারবার একই সতর্কতা-ইমেইল পাঠিয়ে বিরক্ত করা হবে না
   if(!isLoginAlertEmailConfigured()) return;
   if(typeof ensureEmailJsReady !== 'function' || !ensureEmailJsReady()) return;
   const email = fbUser.email; if(!email) return;
@@ -350,6 +408,19 @@ function sessionDocToDate(ts){
   try{ return ts && ts.toDate ? ts.toDate() : null; }catch(e){ return null; }
 }
 
+// দুই তারিখের ব্যবধানকে "৩ ঘণ্টা ২০ মিনিট"-এর মতো বাংলা টেক্সটে রূপান্তর —
+// একটি সেশন কতক্ষণ সক্রিয় ছিল/আছে তা বোঝাতে ব্যবহৃত হয়।
+function durationBn(from, to){
+  if(!from || !to) return '';
+  let mins = Math.floor((to.getTime() - from.getTime()) / 60000);
+  if(mins < 1) return '';
+  if(mins < 60) return `${toBn(mins)} মিনিট`;
+  const hrs = Math.floor(mins / 60); mins = mins % 60;
+  if(hrs < 24) return mins ? `${toBn(hrs)} ঘণ্টা ${toBn(mins)} মিনিট` : `${toBn(hrs)} ঘণ্টা`;
+  const days = Math.floor(hrs / 24);
+  return `${toBn(days)} দিন`;
+}
+
 async function openSessionHistoryModal(){
   const user = state.user;
   if(!user || !fbDb) return;
@@ -366,6 +437,7 @@ async function openSessionHistoryModal(){
       <div class="app-modal-head"><h3>লগইন হিস্টোরি ও সক্রিয় সেশন</h3><button class="app-modal-close" id="sessHistClose">✕</button></div>
       <div class="app-modal-body">
         <p class="session-history-hint">আপনার অ্যাকাউন্টে যেসব ডিভাইস থেকে প্রবেশ করা হয়েছে তার তালিকা। যেকোনো অচেনা সেশন দেখলে সরাসরি সেটি লগ-আউট করে দিন।</p>
+        <div id="sessHistSummary" class="session-history-summary"></div>
         <div id="sessHistList" class="session-list"><div class="session-loading">লোড হচ্ছে...</div></div>
         <button type="button" class="settings-btn profile-action-btn profile-action-danger" id="sessHistLogoutAll" style="margin-top:12px;">
           <i class="fa-solid fa-right-from-bracket"></i><span>অন্য সব ডিভাইস থেকে লগ-আউট করুন</span>
@@ -386,30 +458,61 @@ async function openSessionHistoryModal(){
     if(snap.empty){
       listEl.innerHTML = '<div class="session-loading">এখনও কোনো সেশন রেকর্ড নেই।</div>';
     } else {
+      const onlineCount = snap.docs.filter(doc => {
+        const la = sessionDocToDate(doc.data().lastActiveAt);
+        return la && (Date.now() - la.getTime() < SESSION_ONLINE_WINDOW_MS);
+      }).length;
+      const summaryEl = document.getElementById('sessHistSummary');
+      if(summaryEl){
+        summaryEl.innerHTML = `<i class="fa-solid fa-shield-halved"></i> সর্বমোট ${toBn(snap.size)}টি সেশন রেকর্ড · ${toBn(onlineCount)}টি এখন সক্রিয়`;
+      }
+
       listEl.innerHTML = snap.docs.map(doc => {
         const d = doc.data();
         const isCurrent = doc.id === currentTabSessionId;
+        const createdAt = sessionDocToDate(d.createdAt);
         const lastActive = sessionDocToDate(d.lastActiveAt);
         const isOnline = lastActive && (Date.now() - lastActive.getTime() < SESSION_ONLINE_WINDOW_MS);
-        const locationBits = [d.city, d.country].filter(Boolean).join(', ');
-        const metaBits = [
-          d.os || '',
-          locationBits || 'লোকেশন শনাক্ত হয়নি',
+
+        const flag = countryFlagEmoji(d.countryCode);
+        const locationText = [d.city, d.regionName, d.country].filter(Boolean).join(', ');
+        const line1 = [
+          (flag ? flag + ' ' : '') + (locationText || 'লোকেশন শনাক্ত হয়নি'),
           d.isp ? ('ISP: ' + d.isp) : '',
-          d.ip ? ('IP: ' + d.ip) : '',
-          d.connectionLabel || ''
+          d.ip ? ('IP: ' + d.ip) : ''
         ].filter(Boolean);
+        const line2 = [
+          d.loginMethod || '',
+          d.connectionLabel || '',
+          d.timezone ? ('টাইমজোন: ' + d.timezone) : ''
+        ].filter(Boolean);
+
+        const durText = durationBn(createdAt, lastActive);
+        const timeText = isOnline ? 'এখন সক্রিয় আছে' : ('সর্বশেষ সক্রিয়: ' + relativeTimeBn(lastActive));
+        const firstSeenText = createdAt ? ('প্রথম প্রবেশ: ' + formatLoginTimeBn(createdAt)) : '';
+        const mapsLink = (typeof d.lat === 'number' && typeof d.lon === 'number')
+          ? `<a href="https://www.google.com/maps?q=${d.lat},${d.lon}" target="_blank" rel="noopener" class="session-map-link"><i class="fa-solid fa-location-dot"></i> মানচিত্রে দেখুন</a>` : '';
+        const emailTag = (d.emailSent === false)
+          ? '<span class="session-badge session-badge-muted" title="একই IP থেকে আগেও লগইন হয়েছে বলে এবার নতুন করে সতর্কতা-ইমেইল পাঠানো হয়নি">ইমেইল পাঠানো হয়নি (পরিচিত IP)</span>' : '';
+
         return `
         <div class="session-item${isCurrent ? ' session-item-current' : ''}" data-session-id="${escapeHtml(doc.id)}">
           <div class="session-item-icon"><i class="${escapeHtml(d.browserIcon || 'fa-solid fa-globe')}"></i></div>
           <div class="session-item-body">
             <div class="session-item-title-row">
-              <span class="session-item-title">${escapeHtml(d.browser || 'অজানা ব্রাউজার')}</span>
+              <span class="session-item-title">${escapeHtml(d.browser || 'অজানা ব্রাউজার')} · ${escapeHtml(d.os || 'অজানা সিস্টেম')}</span>
+              <span class="session-device-badge"><i class="${escapeHtml(d.deviceIcon || 'fa-solid fa-desktop')}"></i> ${escapeHtml(d.deviceLabel || '')}</span>
               ${isCurrent ? '<span class="session-badge session-badge-current">এই ডিভাইস</span>' : ''}
+              ${d.isNewDevice && !isCurrent ? '<span class="session-badge session-badge-new">🆕 নতুন ডিভাইস</span>' : ''}
               <span class="session-online-dot ${isOnline ? 'online' : 'offline'}" title="${isOnline ? 'এখন অনলাইন' : 'অফলাইন'}"></span>
             </div>
-            <div class="session-item-meta">${metaBits.map(escapeHtml).join(' · ')}</div>
-            <div class="session-item-time">${isOnline ? 'এখন সক্রিয় আছে' : ('সর্বশেষ সক্রিয়: ' + relativeTimeBn(lastActive))}</div>
+            <div class="session-item-meta">${line1.map(escapeHtml).join(' · ')}</div>
+            ${line2.length ? `<div class="session-item-meta session-item-meta-sub">${line2.map(escapeHtml).join(' · ')}</div>` : ''}
+            <div class="session-item-time">
+              ${timeText}${durText ? ' · স্থিতিকাল: ' + durText : ''}
+              ${firstSeenText ? `<br>${firstSeenText}` : ''}
+            </div>
+            <div class="session-item-extra">${mapsLink}${emailTag}</div>
           </div>
           ${isCurrent ? '' : `<button type="button" class="session-revoke-btn" data-revoke="${escapeHtml(doc.id)}" aria-label="এই সেশন লগ-আউট করুন"><i class="fa-solid fa-xmark"></i></button>`}
         </div>`;
