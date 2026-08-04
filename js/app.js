@@ -99,17 +99,38 @@ function initFontControls(){
 }
 
 // ---------- Offline / online status pill in the header ----------
+// Shows three states: fully offline, online-but-a-cloud-sync-is-still-pending
+// (see cloudSyncPending in js/auth.js), or hidden when everything is caught up.
+// Exposed globally (not just called once) so js/auth.js can refresh it the
+// moment a sync attempt succeeds/fails/gets queued.
+function updateConnStatusPill(){
+  const pill = document.getElementById('connStatus');
+  if(!pill) return;
+  const online = navigator.onLine;
+  const pending = typeof cloudSyncPending !== 'undefined' && cloudSyncPending;
+  if(!online){
+    pill.innerHTML = '<i class="fa-solid fa-cloud-arrow-down"></i> অফলাইন মোড';
+    pill.classList.add('visible');
+  } else if(pending){
+    pill.innerHTML = '<i class="fa-solid fa-rotate fa-spin"></i> সিঙ্ক হচ্ছে...';
+    pill.classList.add('visible');
+  } else {
+    pill.textContent = '';
+    pill.classList.remove('visible');
+  }
+}
 function initConnectionStatus(){
   const pill = document.getElementById('connStatus');
   if(!pill) return;
-  const update = () => {
-    const online = navigator.onLine;
-    pill.textContent = online ? '' : '⚠ You Are Offline';
-    pill.classList.toggle('visible', !online);
-  };
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
-  update();
+  window.addEventListener('online', () => {
+    updateConnStatusPill();
+    if(typeof showToast === 'function') showToast('🟢 আবার সংযুক্ত হয়েছে');
+  });
+  window.addEventListener('offline', () => {
+    updateConnStatusPill();
+    if(typeof showToast === 'function') showToast('অফলাইন মোড — সংরক্ষিত কনটেন্ট দিয়ে অ্যাপ চলবে');
+  });
+  updateConnStatusPill();
 }
 
 // ---------- Service worker registration: this is what makes the whole app,
@@ -123,6 +144,27 @@ function initServiceWorker(){
   if(navigator.storage && navigator.storage.persist){
     navigator.storage.persist().catch(() => {});
   }
+  // ---------- স্মার্ট আপডেট: পুরনো JS + নতুন ক্যাশ একসাথে মিশে না যায় ----------
+  // sw.js প্রতিটি নতুন ভার্সনে skipWaiting()+clients.claim() করে সাথে সাথেই
+  // কন্ট্রোল নিয়ে নেয় (দ্রুত ডিপ্লয়ের জন্য ইচ্ছাকৃত)। সমস্যা হলো: এতে ট্যাব
+  // খোলা থাকা অবস্থাতেই নিচের ক্যাশ/ফাইল বদলে যায়, অথচ পেজে আগে থেকে চলতে
+  // থাকা JS পুরনোই থেকে যায় — দুটো ভার্সন মিশে গিয়ে সূক্ষ্ম bug হতে পারে।
+  // এখানে সেই মুহূর্তটা (controllerchange) ধরে একবার নিজে থেকেই রিফ্রেশ করে
+  // দেওয়া হয়, যাতে ইউজারকে ম্যানুয়ালি রিলোড করতে না হয় অথচ সবসময় সব
+  // ফাইলের একই ভার্সন নিয়ে অ্যাপ চলে।
+  // ব্রাউজার এই পেজ লোড হওয়ার সময়ই যদি ইতিমধ্যে কোনো SW-এর কন্ট্রোলে থাকে,
+  // তবেই এটা একটা "রিটার্নিং ইউজার" — অর্থাৎ পরের controllerchange মানে সত্যিকারের
+  // নতুন ভার্সন। প্রথমবার ইনস্টলের সময় clients.claim()-এর কারণেও একটা
+  // controllerchange ঘটে (null থেকে প্রথম কন্ট্রোলার), সেটাকে "আপডেট" হিসেবে
+  // ভুল করে রিফ্রেশ করা এড়াতেই এই চেক।
+  const hadController = !!navigator.serviceWorker.controller;
+  let swRefreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if(!hadController || swRefreshing) return;
+    swRefreshing = true;
+    if(typeof showToast === 'function') showToast('✨ নতুন আপডেট ইনস্টল হয়েছে — রিফ্রেশ হচ্ছে');
+    setTimeout(() => window.location.reload(), 900);
+  });
 }
 
 // ---------- "Install app" button (PWA), the most reliable way to get heavy
@@ -215,6 +257,7 @@ function handleShortcutLaunch(){
   initConnectionStatus();
   initInstallPrompt();
   initServiceWorker();
+  if(typeof initSmartStorage === 'function') initSmartStorage();
   if(typeof initForegroundPush === 'function') initForegroundPush();
   if(typeof initDonationBanner === 'function') initDonationBanner();
   initSearch();
