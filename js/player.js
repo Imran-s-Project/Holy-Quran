@@ -287,6 +287,10 @@ function playAtIndex(idx, userInitiated){
   const prevItem = state.playlist[state.playIndex];
   const sameTrackAlreadyLoaded = isFullSurahReciter() && audioEl.src && audioEl.src === newUrl && prevItem && prevItem.surah === item.surah;
   state.playIndex = idx;
+  // অফলাইনে সংরক্ষিত সূরা প্লে হলে তার "সর্বশেষ ব্যবহার" সময় আপডেট — স্মার্ট
+  // স্টোরেজ eviction (js/smart-storage.js) এই তথ্যের ওপর ভিত্তি করেই ঠিক করে
+  // কোন সূরাগুলো সবচেয়ে কম ব্যবহৃত, তাই জায়গা লাগলে সেগুলোই আগে সরে।
+  if(typeof touchOfflineSurah === 'function') touchOfflineSurah(item.surah);
   document.getElementById('playerRef').textContent = `আয়াত ${toBn(item.numberInSurah)}`;
   document.getElementById('playerTitle').textContent = item.title;
   playerBar.classList.add('visible');
