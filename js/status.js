@@ -580,7 +580,6 @@ function renderStatusFooter(item, isMine){
     rightHtml = `
       <button type="button" class="status-love-btn${iReacted ? ' active' : ''}" id="statusLoveBtn" title="লাভ রিয়েক্ট">
         <i class="fa-${iReacted ? 'solid' : 'regular'} fa-heart"></i>
-        ${reactionCount ? `<span>${toBn(reactionCount)}</span>` : ''}
       </button>`;
   } else if(reactionCount){
     rightHtml = `<span class="status-love-count-badge"><i class="fa-solid fa-heart"></i> ${toBn(reactionCount)}</span>`;
