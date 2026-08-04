@@ -52,7 +52,7 @@ const THEMES = [
 
 // Bump the version suffix any time app-shell files change so the service
 // worker picks up a fresh copy instead of serving a stale cached version.
-const SW_VERSION = 'v166';
+const SW_VERSION = 'v167';
 const SHELL_CACHE_NAME = `qr-shell-${SW_VERSION}`;
 const API_CACHE_NAME = `qr-api-${SW_VERSION}`;
 const AUDIO_CACHE_NAME = `qr-audio-${SW_VERSION}`;
@@ -99,6 +99,7 @@ const APP_SHELL_CORE = [
   './css/download-manager.css',
   './css/theme-builder.css',
   './css/hadith.css',
+  './css/session-security.css',
   './js/data.js',
   './js/i18n/bn.js',
   './js/storage.js',
@@ -137,6 +138,7 @@ const APP_SHELL_DEFERRED = [
   './js/transliteration.js',
   './js/emailjs-config.js',
   './js/otp.js',
+  './js/session-security.js',
   './js/auth.js',
   './js/reset-password.js',
   './js/push.js',
