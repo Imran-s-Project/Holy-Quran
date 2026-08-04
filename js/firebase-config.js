@@ -38,6 +38,19 @@
 //           allow read, write: if request.auth != null && request.auth.uid == uid;
 //         }
 //       }
+//       // WhatsApp-style Status/Stories (js/status.js) — everyone can read
+//       // (even signed-out visitors), but only the signed-in owner can
+//       // create/edit/delete their own status; any other signed-in user may
+//       // only append their own uid to `views` (view-count tracking).
+//       match /statuses/{statusId} {
+//         allow read: if true;
+//         allow create: if request.auth != null && request.resource.data.uid == request.auth.uid;
+//         allow update: if request.auth != null && (
+//           resource.data.uid == request.auth.uid ||
+//           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+//         );
+//         allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+//       }
 //     }
 //   }
 
