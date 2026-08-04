@@ -243,6 +243,7 @@ function handleShortcutLaunch(){
   if(typeof IDBKV !== 'undefined') await IDBKV.init();
   loadPrefs();
   if(typeof initAuth === 'function') initAuth();
+  if(typeof initStatus === 'function') initStatus();
   if(typeof loadCustomTheme === 'function') loadCustomTheme();
   initTheme();
   initFontControls();
