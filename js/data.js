@@ -326,6 +326,28 @@ const DICTIONARY_DATA = [
 // and APP_SHELL_FILES below.
 const I18N = {};
 
+// Shared translation lookup, usable anywhere in the app (not just the
+// data-i18n DOM pass in applyLanguage). Same precedence as applyLanguage:
+// a user's own contributed translation wins, then the active language's
+// dictionary, then English as the last-resort fallback. Any module that
+// builds HTML dynamically (profile modal, etc.) can call tr('some_key')
+// and it will always reflect state.language at render time.
+function tr(key){
+  const dict = (typeof I18N !== 'undefined' && I18N[state.language]) || I18N.en;
+  const custom = (state.customTranslations && state.customTranslations[state.language]) || {};
+  if(custom[key] !== undefined) return custom[key];
+  if(dict && dict[key] !== undefined) return dict[key];
+  return (I18N.en && I18N.en[key] !== undefined) ? I18N.en[key] : key;
+}
+
+// Locale-aware digit formatting: Bengali numerals for the bn interface,
+// plain Arabic numerals for every other language (matching what those
+// languages' own users expect — Bengali is the one script this app
+// renders in a non-Latin numeral system by default).
+function localNum(n){
+  return state.language === 'bn' ? toBn(n) : String(n);
+}
+
 // Interface-language picker metadata: controls the order/labels shown in the
 // "Language" picker in Settings. `dir` marks languages written right-to-left.
 const UI_LANG_META = [
