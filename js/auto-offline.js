@@ -88,6 +88,10 @@ async function runAutoOfflineLoop(){
       return;
     }
     if(!isSurahOffline(s.number)){
+      // নতুন সূরা ক্যাশ করার আগে স্টোরেজ কোটা যাচাই — কাছাকাছি পৌঁছে গেলে
+      // js/smart-storage.js সবচেয়ে কম-ব্যবহৃত পুরনো সূরাগুলো নিজে থেকেই
+      // সরিয়ে জায়গা খালি করে, যাতে ব্রাউজার এলোমেলোভাবে ক্যাশ না মোছে।
+      if(typeof smartStorageCheck === 'function') await smartStorageCheck();
       try{
         const globalNumbers = await dlmFetchGlobalNumbers(s.number);
         const urls = dlmAudioUrls(globalNumbers, state.reciter, s.number);
