@@ -23,11 +23,17 @@
 //     surah, ayah, surahName, arabic, translation,
 //     reciter, reciterName, audioUrl,                        // type:'ayah'
 //     createdAt (ms epoch, client clock), expiresAt (ms epoch),
-//     views: [uid, uid, ...] }
+//     viewers: { [uid]: { name, avatarColor, avatarIcon, viewedAt } },
+//     reactions: { [uid]: { name, avatarColor, avatarIcon, at } } }  // love-only for now
+//
+// Bottom-left of the full-screen viewer shows the view COUNT (owner only,
+// tapping opens the "who has seen it" sheet — names + a heart if they also
+// reacted). Bottom-right shows a tappable love (❤) button for everyone
+// except the owner — tap to react, tap again to un-react.
 //
 // Firestore Rules needed (add alongside the ones already documented in
 // js/firebase-config.js) — public read, owner-only write, but any signed-in
-// user may append their own uid to `views`:
+// user may write ONLY their own key inside `viewers` / `reactions`:
 //
 //   match /statuses/{id} {
 //     allow read: if true;
@@ -35,7 +41,10 @@
 //                    && request.resource.data.uid == request.auth.uid;
 //     allow update: if request.auth != null && (
 //         resource.data.uid == request.auth.uid ||
-//         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['views'])
+//         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers']) &&
+//          request.resource.data.viewers.diff(resource.data.get('viewers', {})).affectedKeys().hasOnly([request.auth.uid])) ||
+//         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
+//          request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid]))
 //     );
 //     allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
 //   }
@@ -406,7 +415,8 @@ async function postStatusDoc(payload){
     avatarIcon: (state.user.avatarIcon || ''),
     createdAt: now,
     expiresAt: now + statusSelectedDuration * 3600 * 1000,
-    views: []
+    viewers: {},
+    reactions: {}
   }, payload);
   await fbDb.collection('statuses').add(doc);
 }
@@ -433,6 +443,7 @@ function ensureStatusViewer(){
     <div class="status-viewer-body" id="statusViewerBody"></div>
     <div class="status-viewer-zone status-viewer-zone-left" id="statusViewerPrevZone"></div>
     <div class="status-viewer-zone status-viewer-zone-right" id="statusViewerNextZone"></div>
+    <div class="status-viewer-footer" id="statusViewerFooter"></div>
   `;
   document.body.appendChild(el);
 
@@ -470,6 +481,8 @@ function openStatusViewer(groupIdx){
 function closeStatusViewer(){
   clearStatusTimer();
   if(statusAudioEl){ statusAudioEl.pause(); statusAudioEl = null; }
+  const viewersPanel = document.getElementById('statusViewersPanel');
+  if(viewersPanel) viewersPanel.style.display = 'none';
   const el = document.getElementById('statusViewer');
   if(el) el.style.display = 'none';
   document.body.style.overflow = '';
@@ -490,6 +503,8 @@ function renderStatusSlide(){
   if(statusSlideIdx >= group.items.length){ statusStepGroup(1); return; }
   const item = group.items[statusSlideIdx];
 
+  const viewersPanel = document.getElementById('statusViewersPanel');
+  if(viewersPanel) viewersPanel.style.display = 'none';
   clearStatusTimer();
   if(statusAudioEl){ statusAudioEl.pause(); statusAudioEl = null; }
 
@@ -537,7 +552,126 @@ function renderStatusSlide(){
     statusSlideTimer = setTimeout(() => statusStepSlide(1), STATUS_TEXT_MS);
   }
 
+  renderStatusFooter(item, isMine);
   markStatusViewed(item);
+}
+
+// ================= Footer: view count (owner) + love react (everyone else) =================
+function statusViewCount(item){
+  return item.viewers ? Object.keys(item.viewers).length : 0;
+}
+function statusReactionCount(item){
+  return item.reactions ? Object.keys(item.reactions).length : 0;
+}
+
+function renderStatusFooter(item, isMine){
+  const footer = document.getElementById('statusViewerFooter');
+  if(!footer) return;
+  const viewCount = statusViewCount(item);
+  const reactionCount = statusReactionCount(item);
+  const iReacted = !!(state.user && item.reactions && item.reactions[state.user.uid]);
+
+  const leftHtml = isMine
+    ? `<button type="button" class="status-viewcount-btn" id="statusViewCountBtn" title="কে কে দেখেছে"><i class="fa-solid fa-eye"></i><span>${toBn(viewCount)}</span></button>`
+    : '';
+
+  let rightHtml = '';
+  if(!isMine){
+    rightHtml = `
+      <button type="button" class="status-love-btn${iReacted ? ' active' : ''}" id="statusLoveBtn" title="লাভ রিয়েক্ট">
+        <i class="fa-${iReacted ? 'solid' : 'regular'} fa-heart"></i>
+        ${reactionCount ? `<span>${toBn(reactionCount)}</span>` : ''}
+      </button>`;
+  } else if(reactionCount){
+    rightHtml = `<span class="status-love-count-badge"><i class="fa-solid fa-heart"></i> ${toBn(reactionCount)}</span>`;
+  }
+
+  footer.innerHTML = `
+    <div class="status-viewer-footer-left">${leftHtml}</div>
+    <div class="status-viewer-footer-right">${rightHtml}</div>`;
+
+  const vBtn = document.getElementById('statusViewCountBtn');
+  if(vBtn) vBtn.onclick = (e) => { e.stopPropagation(); openStatusViewersList(item); };
+  const lBtn = document.getElementById('statusLoveBtn');
+  if(lBtn) lBtn.onclick = (e) => { e.stopPropagation(); toggleStatusLove(item, isMine); };
+}
+
+// ================= "কে কে দেখেছে" viewer list sheet =================
+function openStatusViewersList(item){
+  pauseStatusSlide();
+  const viewer = document.getElementById('statusViewer');
+  let panel = document.getElementById('statusViewersPanel');
+  if(!panel){
+    panel = document.createElement('div');
+    panel.id = 'statusViewersPanel';
+    panel.className = 'status-viewers-panel';
+    viewer.appendChild(panel);
+    panel.addEventListener('click', (e) => { if(e.target === panel) closeStatusViewersList(); });
+  }
+  const viewers = Object.entries(item.viewers || {})
+    .map(([uid, v]) => ({ uid, ...v }))
+    .sort((a, b) => (b.viewedAt || 0) - (a.viewedAt || 0));
+  const reactions = item.reactions || {};
+
+  panel.innerHTML = `
+    <div class="status-viewers-sheet">
+      <div class="status-viewers-handle"></div>
+      <div class="status-viewers-title">
+        <span><i class="fa-solid fa-eye"></i> ${toBn(viewers.length)} জন দেখেছেন</span>
+        <button type="button" class="status-viewers-close" id="statusViewersCloseBtn">✕</button>
+      </div>
+      <div class="status-viewers-list">
+        ${viewers.length ? viewers.map(v => `
+          <div class="status-viewer-row">
+            ${statusAvatarHtml({ avatarColor: v.avatarColor, avatarIcon: v.avatarIcon, name: v.name }).replace('status-ring-avatar', 'status-ring-avatar status-viewer-row-avatar')}
+            <span class="status-viewer-row-name">${escapeHtml(v.name || 'ব্যবহারকারী')}</span>
+            ${reactions[v.uid] ? '<i class="fa-solid fa-heart status-viewer-row-heart"></i>' : ''}
+          </div>`).join('') : '<div class="status-viewers-empty">এখনো কেউ দেখেননি</div>'}
+      </div>
+    </div>`;
+  panel.style.display = 'flex';
+  document.getElementById('statusViewersCloseBtn').onclick = closeStatusViewersList;
+}
+function closeStatusViewersList(){
+  const panel = document.getElementById('statusViewersPanel');
+  if(panel) panel.style.display = 'none';
+  if(statusIsPaused) resumeStatusSlide();
+}
+
+// ================= Love react (toggle) =================
+async function toggleStatusLove(item, isMine){
+  if(isMine) return;
+  if(!state.user){
+    showToast('রিয়েক্ট দিতে প্রথমে সাইন ইন করুন');
+    if(typeof openAuthFlow === 'function') openAuthFlow('login');
+    return;
+  }
+  const uid = state.user.uid;
+  if(!item.reactions) item.reactions = {};
+  const alreadyReacted = !!item.reactions[uid];
+
+  // optimistic local update — instant heart response, no slide/timer restart
+  if(alreadyReacted){ delete item.reactions[uid]; }
+  else { item.reactions[uid] = { name: state.user.name || 'ব্যবহারকারী', avatarColor: state.user.avatarColor || '', avatarIcon: state.user.avatarIcon || '', at: Date.now() }; }
+  renderStatusFooter(item, isMine);
+  const lBtn = document.getElementById('statusLoveBtn');
+  if(lBtn && !alreadyReacted){ lBtn.classList.add('pop'); setTimeout(() => lBtn.classList.remove('pop'), 380); }
+
+  try{
+    if(alreadyReacted){
+      await fbDb.collection('statuses').doc(item.id).update({ ['reactions.' + uid]: firebase.firestore.FieldValue.delete() });
+    } else {
+      await fbDb.collection('statuses').doc(item.id).update({
+        ['reactions.' + uid]: { name: state.user.name || 'ব্যবহারকারী', avatarColor: state.user.avatarColor || '', avatarIcon: state.user.avatarIcon || '', at: Date.now() }
+      });
+    }
+  }catch(e){
+    // revert on failure
+    if(alreadyReacted){ item.reactions[uid] = { name: state.user.name || 'ব্যবহারকারী', avatarColor: state.user.avatarColor || '', avatarIcon: state.user.avatarIcon || '', at: Date.now() }; }
+    else { delete item.reactions[uid]; }
+    renderStatusFooter(item, isMine);
+    showToast('রিয়েক্ট করা যায়নি, আবার চেষ্টা করুন');
+  }
 }
 
 function pauseStatusSlide(){
@@ -595,11 +729,14 @@ function statusStepGroup(dir){
 async function markStatusViewed(item){
   markStatusSeenLocally(item.id);
   if(!state.user || state.user.uid === item.uid) return;
-  if((item.views || []).includes(state.user.uid)) return;
+  if(item.viewers && item.viewers[state.user.uid]) return;
+  const uid = state.user.uid;
+  const entry = { name: state.user.name || 'ব্যবহারকারী', avatarColor: state.user.avatarColor || '', avatarIcon: state.user.avatarIcon || '', viewedAt: Date.now() };
+  // optimistic — so re-opening the owner's own footer/viewer-list this session is instant
+  if(!item.viewers) item.viewers = {};
+  item.viewers[uid] = entry;
   try{
-    await fbDb.collection('statuses').doc(item.id).update({
-      views: firebase.firestore.FieldValue.arrayUnion(state.user.uid)
-    });
+    await fbDb.collection('statuses').doc(item.id).update({ ['viewers.' + uid]: entry });
   }catch(e){ /* সাইলেন্ট — ভিউ-কাউন্ট শুধুই সহায়ক তথ্য */ }
 }
 
