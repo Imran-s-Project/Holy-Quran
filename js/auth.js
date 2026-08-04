@@ -637,32 +637,33 @@ function renderMiniHeatmap(activity){
     </div>`;
 }
 
-// প্রতিটা সোশ্যাল প্রোভাইডারের জন্য একটা আইকনসহ কার্ড বানায়: লিংক করা না
-// থাকলে "লিংক করুন" বাটন, লিংক করা থাকলে ও নিরাপদে আনলিংক করা গেলে
-// "আনলিংক" বাটন, আর সেটাই যদি অ্যাকাউন্টে ঢোকার একমাত্র উপায় হয় তাহলে
-// শুধু "লিংকড" ব্যাজ (যাতে ভুল করে নিজেকে লক করে ফেলা না যায়)।
-function renderSocialAccountGrid(providerIds){
+// প্রতিটা সোশ্যাল প্রোভাইডারের জন্য একটা আইকনসহ লিস্ট-রো বানায় (একাউন্ট
+// লিংক করার মডালে ব্যবহৃত হয়): লিংক করা না থাকলে "লিংক করুন" পিল-বাটন,
+// লিংক করা থাকলে ও নিরাপদে আনলিংক করা গেলে "আনলিংক" বাটন, আর সেটাই যদি
+// অ্যাকাউন্টে ঢোকার একমাত্র উপায় হয় তাহলে শুধু লক আইকন (যাতে ভুল করে
+// নিজেকে লক করে ফেলা না যায়)।
+function renderLinkAccountRows(providerIds){
   return SOCIAL_PROVIDERS.map(p => {
     const linked = providerIds.includes(p.id);
     const canUnlink = linked && providerIds.length > 1;
     let action = '';
-    let stateText = 'লিংক করা নেই';
+    let stateText = 'সংযুক্ত নেই';
     let stateClass = '';
     if(linked && canUnlink){
-      stateText = 'লিংকড'; stateClass = 'is-linked';
-      action = `<button type="button" class="profile-social-action" data-unlink-provider="${p.id}">আনলিংক</button>`;
+      stateText = 'সংযুক্ত আছে'; stateClass = 'is-linked';
+      action = `<button type="button" class="link-account-action link-account-action-unlink" data-unlink-provider="${p.id}"><i class="fa-solid fa-link-slash"></i><span>আনলিংক</span></button>`;
     } else if(linked && !canUnlink){
-      stateText = 'সাইন-ইন পদ্ধতি'; stateClass = 'is-linked';
-      action = `<span class="profile-social-locked" title="এটি বাদ দিলে অ্যাকাউন্টে ঢোকার উপায় থাকবে না, তাই আনলিংক করা যাচ্ছে না"><i class="fa-solid fa-lock"></i></span>`;
+      stateText = 'সাইন-ইন পদ্ধতি'; stateClass = 'is-linked is-locked';
+      action = `<span class="link-account-locked" title="এটি বাদ দিলে অ্যাকাউন্টে ঢোকার উপায় থাকবে না, তাই আনলিংক করা যাচ্ছে না"><i class="fa-solid fa-lock"></i></span>`;
     } else {
-      action = `<button type="button" class="profile-social-action profile-social-action-primary" data-link-provider="${p.id}">লিংক করুন</button>`;
+      action = `<button type="button" class="link-account-action link-account-action-link" data-link-provider="${p.id}"><i class="fa-solid fa-plus"></i><span>লিংক করুন</span></button>`;
     }
     return `
-      <div class="profile-social-item ${stateClass}" style="--brand-color:${p.color}">
-        <div class="profile-social-icon"><i class="${p.icon}"></i></div>
-        <div class="profile-social-info">
-          <span class="profile-social-name">${escapeHtml(p.label)}</span>
-          <span class="profile-social-state">${stateText}</span>
+      <div class="link-account-row ${stateClass}" style="--brand-color:${p.color}">
+        <div class="link-account-icon"><i class="${p.icon}"></i></div>
+        <div class="link-account-info">
+          <span class="link-account-name">${escapeHtml(p.label)}</span>
+          <span class="link-account-state">${linked ? '<i class="fa-solid fa-circle-check"></i> ' : ''}${stateText}</span>
         </div>
         ${action}
       </div>`;
@@ -680,6 +681,7 @@ function openProfileModal(){
   const avatarIcon = (user.avatarIcon && isKnownAvatarIcon(user.avatarIcon)) ? user.avatarIcon : '';
   const providerIds = user.providerIds || [user.provider || 'password'];
   const isPasswordUser = providerIds.includes('password');
+  const linkedAccountCount = SOCIAL_PROVIDERS.filter(p => providerIds.includes(p.id)).length;
   const activity = (typeof loadActivity === 'function') ? loadActivity() : {};
   const streak = (typeof computeStreak === 'function') ? computeStreak(activity) : 0;
   const badgeTotal = (typeof BADGES !== 'undefined') ? BADGES.length : 0;
@@ -835,7 +837,14 @@ function openProfileModal(){
         </div>
 
         <div class="section-title-sm">সংযুক্ত অ্যাকাউন্ট</div>
-        <div class="profile-social-grid">${renderSocialAccountGrid(providerIds)}</div>
+        <button type="button" class="profile-link-account-btn" id="profOpenLinkAccounts">
+          <span class="profile-link-account-icon"><i class="fa-solid fa-link"></i></span>
+          <span class="profile-link-account-text">
+            <span class="profile-link-account-title">একাউন্ট লিংক করুন</span>
+            <span class="profile-link-account-sub" id="profLinkAccountsSub">${linkedAccountCount ? `${toBn(linkedAccountCount)}টি প্ল্যাটফর্ম সংযুক্ত` : 'কোনো প্ল্যাটফর্ম সংযুক্ত নেই'}</span>
+          </span>
+          <span class="profile-link-account-chevron"><i class="fa-solid fa-chevron-right"></i></span>
+        </button>
 
         <div class="section-title-sm">নিরাপত্তা ও অ্যাকাউন্ট</div>
         <div class="profile-actions">
@@ -1020,19 +1029,8 @@ function openProfileModal(){
   const serverCopyBtn = document.getElementById('profServerCopy');
   if(serverCopyBtn) serverCopyBtn.onclick = () => copyProfileValue(window.location.host, serverCopyBtn);
 
-  wrap.querySelectorAll('[data-link-provider]').forEach(btn => {
-    btn.onclick = () => {
-      const pid = btn.getAttribute('data-link-provider');
-      const original = btn.textContent;
-      btn.disabled = true; btn.textContent = 'লিংক হচ্ছে...';
-      linkSocialAccount(pid, btn, () => { remove(); openProfileModal(); }).finally(() => {
-        if(document.body.contains(btn)) btn.textContent = original;
-      });
-    };
-  });
-  wrap.querySelectorAll('[data-unlink-provider]').forEach(btn => {
-    btn.onclick = () => { remove(); confirmUnlinkProvider(btn.getAttribute('data-unlink-provider')); };
-  });
+  const openLinkAccountsBtn = document.getElementById('profOpenLinkAccounts');
+  if(openLinkAccountsBtn) openLinkAccountsBtn.onclick = () => openLinkAccountsModal();
 
   const loginHistoryBtn = document.getElementById('profLoginHistoryBtn');
   if(loginHistoryBtn) loginHistoryBtn.onclick = () => { if(typeof openSessionHistoryModal === 'function') openSessionHistoryModal(); };
@@ -1092,6 +1090,80 @@ const SOCIAL_PROVIDERS = [
 ];
 function getSocialProvider(id){ return SOCIAL_PROVIDERS.find(p => p.id === id); }
 
+// ---------- "একাউন্ট লিংক করুন" মডাল ----------
+// প্রোফাইল মডালে আগে সরাসরি একটা গ্রিডে সবগুলো প্ল্যাটফর্ম দেখানো হতো।
+// এখন প্রোফাইলে শুধু একটা "একাউন্ট লিংক করুন" বাটন থাকে, আর সেটাতে ট্যাপ
+// করলে এই আলাদা মডালে Google/Facebook/X/GitHub/Microsoft-এর একটা স্মার্ট,
+// আধুনিক লিস্ট দেখানো হয় — প্রতিটার পাশে লিংক/আনলিংক অ্যাকশন। প্রোফাইল
+// মডাল বন্ধ না করেই এটা তার উপরে খোলে, যাতে পেছনে ফিরে গেলে প্রোফাইল
+// আবার রিলোড হওয়ার দরকার না পড়ে।
+function openLinkAccountsModal(){
+  const user = state.user;
+  if(!user) return;
+  const old = document.getElementById('linkAccountsModal');
+  if(old) old.remove();
+  const providerIds = user.providerIds || [user.provider || 'password'];
+
+  const wrap = document.createElement('div');
+  wrap.className = 'app-modal';
+  wrap.id = 'linkAccountsModal';
+  wrap.style.display = 'flex';
+  wrap.innerHTML = `
+    <div class="app-modal-box input-box-modal link-accounts-modal-box">
+      <div class="app-modal-head">
+        <h3><i class="fa-solid fa-link"></i> একাউন্ট লিংক করুন</h3>
+        <button class="app-modal-close" id="linkAccountsClose">✕</button>
+      </div>
+      <div class="app-modal-body">
+        <p class="link-accounts-hint">যেকোনো প্ল্যাটফর্ম লিংক করলে সেটা দিয়েও সরাসরি সাইন-ইন করা যাবে — পাসওয়ার্ড ছাড়াই।</p>
+        <div class="link-account-list" id="linkAccountList">${renderLinkAccountRows(providerIds)}</div>
+      </div>
+    </div>`;
+  document.body.appendChild(wrap);
+
+  const remove = () => wrap.remove();
+  wrap.addEventListener('click', (e) => { if(e.target === wrap) remove(); });
+  document.getElementById('linkAccountsClose').onclick = remove;
+
+  wireLinkAccountActions();
+}
+
+// মডালটা বন্ধ না করেই ভেতরের লিস্ট রি-রেন্ডার করে (লিংক/আনলিংক হওয়ার পর),
+// আর পেছনে খোলা প্রোফাইল মডালের সামারি টেক্সটও একইসাথে আপডেট করে দেয়।
+function refreshLinkAccountsModalBody(){
+  if(!state.user) return;
+  const providerIds = state.user.providerIds || [state.user.provider || 'password'];
+  const list = document.getElementById('linkAccountList');
+  if(list){ list.innerHTML = renderLinkAccountRows(providerIds); wireLinkAccountActions(); }
+  updateLinkAccountSummary(providerIds);
+}
+
+function wireLinkAccountActions(){
+  const list = document.getElementById('linkAccountList');
+  if(!list) return;
+  list.querySelectorAll('[data-link-provider]').forEach(btn => {
+    btn.onclick = () => {
+      const pid = btn.getAttribute('data-link-provider');
+      btn.disabled = true; btn.classList.add('is-busy');
+      linkSocialAccount(pid, btn, refreshLinkAccountsModalBody).finally(() => {
+        if(document.body.contains(btn)) btn.classList.remove('is-busy');
+      });
+    };
+  });
+  list.querySelectorAll('[data-unlink-provider]').forEach(btn => {
+    btn.onclick = () => confirmUnlinkProvider(btn.getAttribute('data-unlink-provider'), refreshLinkAccountsModalBody);
+  });
+}
+
+// প্রোফাইল মডালের "একাউন্ট লিংক করুন" বাটনের নিচে কতগুলো প্ল্যাটফর্ম
+// সংযুক্ত আছে তার সামারি টেক্সট আপডেট করে (প্রোফাইল মডাল খোলা থাকলে)।
+function updateLinkAccountSummary(providerIds){
+  const sub = document.getElementById('profLinkAccountsSub');
+  if(!sub) return;
+  const linkedCount = SOCIAL_PROVIDERS.filter(p => providerIds.includes(p.id)).length;
+  sub.textContent = linkedCount ? `${toBn(linkedCount)}টি প্ল্যাটফর্ম সংযুক্ত` : 'কোনো প্ল্যাটফর্ম সংযুক্ত নেই';
+}
+
 // লগইন করা অ্যাকাউন্টে যেকোনো একটি সোশ্যাল প্রোভাইডার লিংক করে — একই uid,
 // একই Firestore ডেটা, শুধু সাইন-ইন করার আরেকটা উপায় যোগ হয়। প্রোভাইডারের
 // ইমেইল আর অ্যাকাউন্টের ইমেইল না মিললে লিংক সাথে সাথে বাতিল করে দেওয়া হয়,
@@ -1132,7 +1204,7 @@ async function linkSocialAccount(providerId, triggerBtn, onDone){
 // বাদ দিলেও অ্যাকাউন্টে ঢোকার অন্তত আরেকটা উপায় (পাসওয়ার্ড বা অন্য প্রোভাইডার)
 // থেকে যায় — যাতে ভুল করে নিজেকে নিজের অ্যাকাউন্ট থেকে লক করে ফেলা না যায়
 // (openProfileModal-এই এই শর্ত যাচাই করে বাটন দেখানো হয়)।
-function confirmUnlinkProvider(providerId){
+function confirmUnlinkProvider(providerId, onDone){
   const meta = getSocialProvider(providerId);
   if(!meta) return;
   const old = document.getElementById('unlinkProviderModal');
@@ -1165,7 +1237,7 @@ function confirmUnlinkProvider(providerId){
       await fbUser.unlink(providerId);
       if(state.user){ state.user.providerIds = (state.user.providerIds || []).filter(p => p !== providerId); }
       showToast(`${meta.label} আনলিংক করা হয়েছে`);
-      openProfileModal();
+      if(onDone) onDone(); else openProfileModal();
     }catch(e){
       showToast('আনলিংক করতে ব্যর্থ হয়েছে, আবার চেষ্টা করুন');
     }
