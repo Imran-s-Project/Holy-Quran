@@ -52,7 +52,7 @@ const THEMES = [
 
 // Bump the version suffix any time app-shell files change so the service
 // worker picks up a fresh copy instead of serving a stale cached version.
-const SW_VERSION = 'v164';
+const SW_VERSION = 'v166';
 const SHELL_CACHE_NAME = `qr-shell-${SW_VERSION}`;
 const API_CACHE_NAME = `qr-api-${SW_VERSION}`;
 const AUDIO_CACHE_NAME = `qr-audio-${SW_VERSION}`;
@@ -102,6 +102,7 @@ const APP_SHELL_CORE = [
   './js/data.js',
   './js/i18n/bn.js',
   './js/storage.js',
+  './js/smart-storage.js',
   './js/idb.js',
   './js/firebase-config.js',
   './js/player.js',
