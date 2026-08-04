@@ -33,12 +33,17 @@
 //
 // Firestore Rules needed (add alongside the ones already documented in
 // js/firebase-config.js) — public read, owner-only write, but any signed-in
-// user may write ONLY their own key inside `viewers` / `reactions`:
+// user may write ONLY their own key inside `viewers` / `reactions`. Posting
+// is also blocked server-side for accounts an admin has marked
+// restricted/blocked (see quranadmin-main's firestore.rules — the canonical,
+// up-to-date copy of these rules lives there now):
 //
 //   match /statuses/{id} {
 //     allow read: if true;
 //     allow create: if request.auth != null
-//                    && request.resource.data.uid == request.auth.uid;
+//                    && request.resource.data.uid == request.auth.uid
+//                    && !(exists(/databases/$(database)/documents/users/$(request.auth.uid))
+//                         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status in ['restricted', 'blocked']);
 //     allow update: if request.auth != null && (
 //         resource.data.uid == request.auth.uid ||
 //         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers']) &&
@@ -46,7 +51,7 @@
 //         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
 //          request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid]))
 //     );
-//     allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+//     allow delete: if request.auth != null && (resource.data.uid == request.auth.uid || isAdmin());
 //   }
 
 const STATUS_TOTAL_AYAHS = 6236; // মোট আয়াত সংখ্যা — এলোমেলো আয়াত বাছাইয়ের জন্য
@@ -351,6 +356,17 @@ function openStatusComposer(){
     if(typeof openAuthFlow === 'function') openAuthFlow('login');
     return;
   }
+  // এডমিন প্যানেল থেকে "সীমিত"/"ব্লক" করা অ্যাকাউন্ট নতুন স্টোরি পোস্ট
+  // করতে পারবে না (Firestore rules-এও একই শর্ত সার্ভার-সাইডে বাধ্যতামূলক)।
+  if(state.user.status === 'restricted' || state.user.status === 'blocked'){
+    showToast(
+      state.user.statusReason
+        ? `আপনার অ্যাকাউন্ট সীমিত অবস্থায় আছে — নতুন স্টোরি পোস্ট করা যাবে না: ${state.user.statusReason}`
+        : 'আপনার অ্যাকাউন্ট সীমিত অবস্থায় আছে — নতুন স্টোরি পোস্ট করা যাবে না।',
+      'error'
+    );
+    return;
+  }
   const el = ensureStatusComposer();
   switchStatusType('text');
   document.getElementById('statusTextInput').value = '';
@@ -368,6 +384,7 @@ function closeStatusComposer(){
 
 async function submitStatus(){
   if(!state.user){ openStatusComposer(); return; }
+  if(state.user.status === 'restricted' || state.user.status === 'blocked'){ openStatusComposer(); return; }
   const type = document.getElementById('statusComposer').getAttribute('data-active-type') || 'text';
   const btn = document.getElementById('statusSubmitBtn');
   btn.disabled = true;
