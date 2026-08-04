@@ -476,45 +476,58 @@ async function openSessionHistoryModal(){
 
         const flag = countryFlagEmoji(d.countryCode);
         const locationText = [d.city, d.regionName, d.country].filter(Boolean).join(', ');
-        const line1 = [
-          (flag ? flag + ' ' : '') + (locationText || 'লোকেশন শনাক্ত হয়নি'),
-          d.isp ? ('ISP: ' + d.isp) : '',
-          d.ip ? ('IP: ' + d.ip) : ''
-        ].filter(Boolean);
-        const line2 = [
-          d.loginMethod || '',
-          d.connectionLabel || '',
-          d.timezone ? ('টাইমজোন: ' + d.timezone) : ''
-        ].filter(Boolean);
-
         const durText = durationBn(createdAt, lastActive);
-        const timeText = isOnline ? 'এখন সক্রিয় আছে' : ('সর্বশেষ সক্রিয়: ' + relativeTimeBn(lastActive));
-        const firstSeenText = createdAt ? ('প্রথম প্রবেশ: ' + formatLoginTimeBn(createdAt)) : '';
+
+        // প্রতিটি তথ্য এখন আলাদা আলাদা বর্ডার-বক্স ("চিপ") হিসেবে দেখানো হয়,
+        // যাতে কোন তথ্য কীসের জন্য তা এক নজরেই বোঝা যায় — সব একসাথে একলাইনে
+        // গুঁতিয়ে না থেকে।
+        const chips = [
+          { icon: 'fa-solid fa-location-dot', label: 'লোকেশন', value: (flag ? flag + ' ' : '') + (locationText || 'শনাক্ত করা যায়নি') },
+          { icon: 'fa-solid fa-tower-broadcast', label: 'ISP', value: d.isp },
+          { icon: 'fa-solid fa-network-wired', label: 'IP ঠিকানা', value: d.ip },
+          { icon: 'fa-solid fa-key', label: 'লগইন পদ্ধতি', value: d.loginMethod },
+          { icon: 'fa-solid fa-signal', label: 'সংযোগ', value: d.connectionLabel },
+          { icon: 'fa-solid fa-clock', label: 'টাইমজোন', value: d.timezone },
+          { icon: 'fa-solid fa-calendar-plus', label: 'প্রথম প্রবেশ', value: createdAt ? formatLoginTimeBn(createdAt) : '' },
+          { icon: 'fa-solid fa-hourglass-half', label: 'স্থিতিকাল', value: durText }
+        ].filter(c => c.value);
+
+        const chipsHtml = chips.map(c => `
+          <div class="session-info-chip">
+            <i class="${escapeHtml(c.icon)}"></i>
+            <div class="session-info-chip-text">
+              <span class="session-info-chip-label">${escapeHtml(c.label)}</span>
+              <span class="session-info-chip-value">${escapeHtml(c.value)}</span>
+            </div>
+          </div>`).join('');
+
         const mapsLink = (typeof d.lat === 'number' && typeof d.lon === 'number')
           ? `<a href="https://www.google.com/maps?q=${d.lat},${d.lon}" target="_blank" rel="noopener" class="session-map-link"><i class="fa-solid fa-location-dot"></i> মানচিত্রে দেখুন</a>` : '';
         const emailTag = (d.emailSent === false)
-          ? '<span class="session-badge session-badge-muted" title="একই IP থেকে আগেও লগইন হয়েছে বলে এবার নতুন করে সতর্কতা-ইমেইল পাঠানো হয়নি">ইমেইল পাঠানো হয়নি (পরিচিত IP)</span>' : '';
+          ? '<span class="session-badge session-badge-muted" title="একই IP থেকে আগেও লগইন হয়েছে বলে এবার নতুন করে সতর্কতা-ইমেইল পাঠানো হয়নি"><i class="fa-solid fa-envelope-circle-check"></i> ইমেইল পাঠানো হয়নি (পরিচিত IP)</span>' : '';
 
         return `
         <div class="session-item${isCurrent ? ' session-item-current' : ''}" data-session-id="${escapeHtml(doc.id)}">
-          <div class="session-item-icon"><i class="${escapeHtml(d.browserIcon || 'fa-solid fa-globe')}"></i></div>
-          <div class="session-item-body">
-            <div class="session-item-title-row">
-              <span class="session-item-title">${escapeHtml(d.browser || 'অজানা ব্রাউজার')} · ${escapeHtml(d.os || 'অজানা সিস্টেম')}</span>
-              <span class="session-device-badge"><i class="${escapeHtml(d.deviceIcon || 'fa-solid fa-desktop')}"></i> ${escapeHtml(d.deviceLabel || '')}</span>
-              ${isCurrent ? '<span class="session-badge session-badge-current">এই ডিভাইস</span>' : ''}
-              ${d.isNewDevice && !isCurrent ? '<span class="session-badge session-badge-new">🆕 নতুন ডিভাইস</span>' : ''}
-              <span class="session-online-dot ${isOnline ? 'online' : 'offline'}" title="${isOnline ? 'এখন অনলাইন' : 'অফলাইন'}"></span>
+          <div class="session-item-top">
+            <div class="session-item-icon"><i class="${escapeHtml(d.browserIcon || 'fa-solid fa-globe')}"></i></div>
+            <div class="session-item-headline">
+              <div class="session-item-title-row">
+                <span class="session-item-title">${escapeHtml(d.browser || 'অজানা ব্রাউজার')} · ${escapeHtml(d.os || 'অজানা সিস্টেম')}</span>
+                ${isCurrent ? '<span class="session-badge session-badge-current">এই ডিভাইস</span>' : ''}
+                ${d.isNewDevice && !isCurrent ? '<span class="session-badge session-badge-new">🆕 নতুন ডিভাইস</span>' : ''}
+              </div>
+              <div class="session-item-status-row">
+                <span class="session-device-badge"><i class="${escapeHtml(d.deviceIcon || 'fa-solid fa-desktop')}"></i> ${escapeHtml(d.deviceLabel || '')}</span>
+                <span class="session-status-text ${isOnline ? 'is-online' : ''}">
+                  <span class="session-online-dot ${isOnline ? 'online' : 'offline'}"></span>
+                  ${isOnline ? 'এখন সক্রিয় আছে' : ('সর্বশেষ সক্রিয়: ' + relativeTimeBn(lastActive))}
+                </span>
+              </div>
             </div>
-            <div class="session-item-meta">${line1.map(escapeHtml).join(' · ')}</div>
-            ${line2.length ? `<div class="session-item-meta session-item-meta-sub">${line2.map(escapeHtml).join(' · ')}</div>` : ''}
-            <div class="session-item-time">
-              ${timeText}${durText ? ' · স্থিতিকাল: ' + durText : ''}
-              ${firstSeenText ? `<br>${firstSeenText}` : ''}
-            </div>
-            <div class="session-item-extra">${mapsLink}${emailTag}</div>
+            ${isCurrent ? '' : `<button type="button" class="session-revoke-btn" data-revoke="${escapeHtml(doc.id)}" aria-label="এই সেশন লগ-আউট করুন"><i class="fa-solid fa-xmark"></i></button>`}
           </div>
-          ${isCurrent ? '' : `<button type="button" class="session-revoke-btn" data-revoke="${escapeHtml(doc.id)}" aria-label="এই সেশন লগ-আউট করুন"><i class="fa-solid fa-xmark"></i></button>`}
+          <div class="session-info-grid">${chipsHtml}</div>
+          ${(mapsLink || emailTag) ? `<div class="session-item-extra">${mapsLink}${emailTag}</div>` : ''}
         </div>`;
       }).join('');
     }
