@@ -637,6 +637,38 @@ function renderMiniHeatmap(activity){
     </div>`;
 }
 
+// প্রতিটা সোশ্যাল প্রোভাইডারের জন্য একটা আইকনসহ কার্ড বানায়: লিংক করা না
+// থাকলে "লিংক করুন" বাটন, লিংক করা থাকলে ও নিরাপদে আনলিংক করা গেলে
+// "আনলিংক" বাটন, আর সেটাই যদি অ্যাকাউন্টে ঢোকার একমাত্র উপায় হয় তাহলে
+// শুধু "লিংকড" ব্যাজ (যাতে ভুল করে নিজেকে লক করে ফেলা না যায়)।
+function renderSocialAccountGrid(providerIds){
+  return SOCIAL_PROVIDERS.map(p => {
+    const linked = providerIds.includes(p.id);
+    const canUnlink = linked && providerIds.length > 1;
+    let action = '';
+    let stateText = 'লিংক করা নেই';
+    let stateClass = '';
+    if(linked && canUnlink){
+      stateText = 'লিংকড'; stateClass = 'is-linked';
+      action = `<button type="button" class="profile-social-action" data-unlink-provider="${p.id}">আনলিংক</button>`;
+    } else if(linked && !canUnlink){
+      stateText = 'সাইন-ইন পদ্ধতি'; stateClass = 'is-linked';
+      action = `<span class="profile-social-locked" title="এটি বাদ দিলে অ্যাকাউন্টে ঢোকার উপায় থাকবে না, তাই আনলিংক করা যাচ্ছে না"><i class="fa-solid fa-lock"></i></span>`;
+    } else {
+      action = `<button type="button" class="profile-social-action profile-social-action-primary" data-link-provider="${p.id}">লিংক করুন</button>`;
+    }
+    return `
+      <div class="profile-social-item ${stateClass}" style="--brand-color:${p.color}">
+        <div class="profile-social-icon"><i class="${p.icon}"></i></div>
+        <div class="profile-social-info">
+          <span class="profile-social-name">${escapeHtml(p.label)}</span>
+          <span class="profile-social-state">${stateText}</span>
+        </div>
+        ${action}
+      </div>`;
+  }).join('');
+}
+
 function openProfileModal(){
   const user = state.user;
   if(!user) return; // profile modal only makes sense for a signed-in user
@@ -648,7 +680,6 @@ function openProfileModal(){
   const avatarIcon = (user.avatarIcon && isKnownAvatarIcon(user.avatarIcon)) ? user.avatarIcon : '';
   const providerIds = user.providerIds || [user.provider || 'password'];
   const isPasswordUser = providerIds.includes('password');
-  const isGoogleLinked = providerIds.includes('google.com');
   const activity = (typeof loadActivity === 'function') ? loadActivity() : {};
   const streak = (typeof computeStreak === 'function') ? computeStreak(activity) : 0;
   const badgeTotal = (typeof BADGES !== 'undefined') ? BADGES.length : 0;
@@ -803,12 +834,12 @@ function openProfileModal(){
           </div>
         </div>
 
+        <div class="section-title-sm">সংযুক্ত অ্যাকাউন্ট</div>
+        <div class="profile-social-grid">${renderSocialAccountGrid(providerIds)}</div>
+
         <div class="section-title-sm">নিরাপত্তা ও অ্যাকাউন্ট</div>
         <div class="profile-actions">
           ${isPasswordUser ? '<button class="settings-btn profile-action-btn" id="profChangePass"><i class="fa-solid fa-key"></i><span>পাসওয়ার্ড পরিবর্তন করুন</span></button>' : ''}
-          ${isPasswordUser && !isGoogleLinked ? '<button class="settings-btn profile-action-btn" id="profLinkGoogle"><i class="fa-brands fa-google"></i><span>Google অ্যাকাউন্ট লিংক করুন</span></button>' : ''}
-          ${isGoogleLinked && isPasswordUser ? '<button class="settings-btn profile-action-btn" id="profUnlinkGoogle"><i class="fa-brands fa-google"></i><span>Google আনলিংক করুন</span></button>' : ''}
-          ${isGoogleLinked && !isPasswordUser ? '<div class="profile-linked-badge"><i class="fa-brands fa-google"></i><span>Google দিয়ে সাইন-ইন করা</span></div>' : ''}
           <button class="settings-btn profile-action-btn" id="profLoginHistoryBtn"><i class="fa-solid fa-clock-rotate-left"></i><span>লগইন হিস্টোরি ও সক্রিয় সেশন</span></button>
           <button class="settings-btn profile-action-btn" id="profLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i><span>লগ আউট করুন</span></button>
         </div>
@@ -989,19 +1020,19 @@ function openProfileModal(){
   const serverCopyBtn = document.getElementById('profServerCopy');
   if(serverCopyBtn) serverCopyBtn.onclick = () => copyProfileValue(window.location.host, serverCopyBtn);
 
-  const linkGoogleBtn = document.getElementById('profLinkGoogle');
-  if(linkGoogleBtn) linkGoogleBtn.onclick = () => {
-    const span = linkGoogleBtn.querySelector('span');
-    const original = span ? span.textContent : '';
-    linkGoogleBtn.disabled = true;
-    if(span) span.textContent = 'লিংক করা হচ্ছে...';
-    linkGoogleAccount(linkGoogleBtn, () => { remove(); openProfileModal(); }).finally(() => {
-      if(span && document.body.contains(linkGoogleBtn)) span.textContent = original;
-    });
-  };
-
-  const unlinkGoogleBtn = document.getElementById('profUnlinkGoogle');
-  if(unlinkGoogleBtn) unlinkGoogleBtn.onclick = () => { remove(); confirmUnlinkGoogle(); };
+  wrap.querySelectorAll('[data-link-provider]').forEach(btn => {
+    btn.onclick = () => {
+      const pid = btn.getAttribute('data-link-provider');
+      const original = btn.textContent;
+      btn.disabled = true; btn.textContent = 'লিংক হচ্ছে...';
+      linkSocialAccount(pid, btn, () => { remove(); openProfileModal(); }).finally(() => {
+        if(document.body.contains(btn)) btn.textContent = original;
+      });
+    };
+  });
+  wrap.querySelectorAll('[data-unlink-provider]').forEach(btn => {
+    btn.onclick = () => { remove(); confirmUnlinkProvider(btn.getAttribute('data-unlink-provider')); };
+  });
 
   const loginHistoryBtn = document.getElementById('profLoginHistoryBtn');
   if(loginHistoryBtn) loginHistoryBtn.onclick = () => { if(typeof openSessionHistoryModal === 'function') openSessionHistoryModal(); };
@@ -1034,35 +1065,61 @@ async function copyProfileValue(text, btn){
   }
 }
 
-// ---------- Google account linking ----------
-// Lets an email/password user attach Google sign-in to their existing
-// account (same uid, same Firestore data — nothing migrates). After this,
-// either method logs into the same account. Only proceeds if the Google
-// account's email actually matches the current account's email, so a user
-// can't accidentally attach the wrong Google identity to their profile.
-async function linkGoogleAccount(triggerBtn, onDone){
+// ---------- সংযুক্ত করা যায় এমন সোশ্যাল/OAuth অ্যাকাউন্ট ----------
+// প্রতিটি এন্ট্রি Firebase Auth-এর প্রকৃতভাবে সমর্থিত একটি প্রোভাইডার (এখানে
+// শুধু সেগুলোই যোগ করা হয়েছে যেগুলো সত্যিই কাজ করে)। নতুন কোনো প্রোভাইডার
+// যোগ করতে হলে শুধু এই তালিকায় একটা এন্ট্রি বসালেই প্রোফাইল মডালে বাটন,
+// লিংক/আনলিংক — সবকিছু নিজে থেকেই তৈরি হয়ে যাবে (নিচের কোড জেনেরিক)।
+//
+// গুরুত্বপূর্ণ সীমাবদ্ধতা: Instagram বা WhatsApp এখানে নেই, কারণ Meta এই
+// দুটোর কোনোটার জন্যই তৃতীয়-পক্ষ ওয়েবসাইটে "সাইন-ইন/লিংক করুন" ধরনের কোনো
+// পাবলিক OAuth সুবিধা দেয় না (Instagram Basic Display API লগইনের জন্য নয়,
+// আর WhatsApp আদৌ কোনো আইডেন্টিটি-প্রোভাইডার নয়, এটা শুধু মেসেজিং অ্যাপ)।
+// তাই এই দুটোর জন্য বাটন বসালে সেটা আসলে কখনোই কাজ করবে না — ভুয়া বাটন না
+// রেখে সত্যিকারের কাজ-করা অপশনগুলোই (Google + এখন Facebook/X/GitHub/
+// Microsoft) দেওয়া হলো।
+//
+// প্রতিটা প্রোভাইডার ব্যবহারের আগে Firebase কনসোল → Authentication →
+// Sign-in method-এ চালু করে সেই প্ল্যাটফর্মের নিজস্ব ডেভেলপার কনসোল থেকে
+// App ID/Secret বসাতে হবে — না হলে auth/operation-not-allowed এরর আসবে
+// (নিচে সেই এরর ধরে বন্ধুত্বপূর্ণ মেসেজও দেখানো হয়)।
+const SOCIAL_PROVIDERS = [
+  { id: 'google.com',    label: 'Google',      icon: 'fa-brands fa-google',    color: '#EA4335', factory: () => new firebase.auth.GoogleAuthProvider() },
+  { id: 'facebook.com',  label: 'Facebook',    icon: 'fa-brands fa-facebook',  color: '#1877F2', factory: () => new firebase.auth.FacebookAuthProvider() },
+  { id: 'twitter.com',   label: 'X (Twitter)', icon: 'fa-brands fa-x-twitter', color: '#000000', factory: () => new firebase.auth.TwitterAuthProvider() },
+  { id: 'github.com',    label: 'GitHub',      icon: 'fa-brands fa-github',    color: '#181717', factory: () => new firebase.auth.GithubAuthProvider() },
+  { id: 'microsoft.com', label: 'Microsoft',   icon: 'fa-brands fa-microsoft', color: '#00A4EF', factory: () => new firebase.auth.OAuthProvider('microsoft.com') }
+];
+function getSocialProvider(id){ return SOCIAL_PROVIDERS.find(p => p.id === id); }
+
+// লগইন করা অ্যাকাউন্টে যেকোনো একটি সোশ্যাল প্রোভাইডার লিংক করে — একই uid,
+// একই Firestore ডেটা, শুধু সাইন-ইন করার আরেকটা উপায় যোগ হয়। প্রোভাইডারের
+// ইমেইল আর অ্যাকাউন্টের ইমেইল না মিললে লিংক সাথে সাথে বাতিল করে দেওয়া হয়,
+// যাতে ভুল করে অন্য কারও অ্যাকাউন্ট এসে না জোড়ে।
+async function linkSocialAccount(providerId, triggerBtn, onDone){
   const fbUser = fbAuth.currentUser;
-  if(!fbUser){ if(triggerBtn) triggerBtn.disabled = false; return; }
+  const meta = getSocialProvider(providerId);
+  if(!fbUser || !meta){ if(triggerBtn) triggerBtn.disabled = false; return; }
   try{
-    const provider = new firebase.auth.GoogleAuthProvider();
+    const provider = meta.factory();
     const result = await fbUser.linkWithPopup(provider);
-    const googleEntry = (result.user.providerData || []).find(p => p.providerId === 'google.com');
+    const entry = (result.user.providerData || []).find(p => p.providerId === providerId);
     const currentEmail = (fbUser.email || '').toLowerCase();
-    if(googleEntry && googleEntry.email && currentEmail && googleEntry.email.toLowerCase() !== currentEmail){
-      // Different email than the account's — undo the link, this would
-      // otherwise silently attach an unrelated Google identity.
-      await fbUser.unlink('google.com');
-      showToast('এই Google অ্যাকাউন্টের ইমেইল আপনার প্রোফাইলের ইমেইলের সাথে মিলছে না');
+    if(entry && entry.email && currentEmail && entry.email.toLowerCase() !== currentEmail){
+      await fbUser.unlink(providerId);
+      showToast(`এই ${meta.label} অ্যাকাউন্টের ইমেইল আপনার প্রোফাইলের ইমেইলের সাথে মিলছে না`);
       return;
     }
     if(state.user){ state.user.providerIds = (result.user.providerData || []).map(p => p.providerId); }
-    showToast('Google অ্যাকাউন্ট লিংক করা হয়েছে');
+    showToast(`${meta.label} অ্যাকাউন্ট লিংক করা হয়েছে`);
     if(onDone) onDone();
   }catch(e){
     if(e && e.code === 'auth/credential-already-in-use'){
-      showToast('এই Google অ্যাকাউন্ট ইতিমধ্যে অন্য একটি অ্যাকাউন্টের সাথে যুক্ত');
+      showToast(`এই ${meta.label} অ্যাকাউন্ট ইতিমধ্যে অন্য একটি অ্যাকাউন্টের সাথে যুক্ত`);
     } else if(e && e.code === 'auth/popup-closed-by-user'){
-      // user backed out of the popup — nothing to say
+      // ইউজার নিজেই পপআপ বন্ধ করেছেন — কিছু বলার দরকার নেই
+    } else if(e && e.code === 'auth/operation-not-allowed'){
+      showToast(`${meta.label} সাইন-ইন এখনো Firebase কনসোলে চালু করা হয়নি`);
     } else {
       showToast('লিংক করতে ব্যর্থ হয়েছে, আবার চেষ্টা করুন');
     }
@@ -1071,40 +1128,43 @@ async function linkGoogleAccount(triggerBtn, onDone){
   }
 }
 
-// Confirms before detaching Google sign-in. Only ever offered when the
-// account also has a password set (see openProfileModal), so unlinking
-// can never lock the user out of their own account.
-function confirmUnlinkGoogle(){
-  const old = document.getElementById('unlinkGoogleModal');
+// আনলিংক করার আগে কনফার্ম করে নেয়। এটা তখনই দেখানো হয় যখন সেই প্রোভাইডারটা
+// বাদ দিলেও অ্যাকাউন্টে ঢোকার অন্তত আরেকটা উপায় (পাসওয়ার্ড বা অন্য প্রোভাইডার)
+// থেকে যায় — যাতে ভুল করে নিজেকে নিজের অ্যাকাউন্ট থেকে লক করে ফেলা না যায়
+// (openProfileModal-এই এই শর্ত যাচাই করে বাটন দেখানো হয়)।
+function confirmUnlinkProvider(providerId){
+  const meta = getSocialProvider(providerId);
+  if(!meta) return;
+  const old = document.getElementById('unlinkProviderModal');
   if(old) old.remove();
   const wrap = document.createElement('div');
   wrap.className = 'app-modal';
-  wrap.id = 'unlinkGoogleModal';
+  wrap.id = 'unlinkProviderModal';
   wrap.style.display = 'flex';
   wrap.innerHTML = `
     <div class="app-modal-box input-box-modal">
-      <div class="app-modal-head"><h3>Google আনলিংক করবেন?</h3><button class="app-modal-close" id="unlinkGClose">✕</button></div>
+      <div class="app-modal-head"><h3>${escapeHtml(meta.label)} আনলিংক করবেন?</h3><button class="app-modal-close" id="unlinkPClose">✕</button></div>
       <div class="app-modal-body">
-        <p style="margin:0 0 14px;color:var(--ink-soft);font-size:14px;">এরপর থেকে শুধু ইমেইল ও পাসওয়ার্ড দিয়েই সাইন-ইন করতে হবে।</p>
+        <p style="margin:0 0 14px;color:var(--ink-soft);font-size:14px;">এরপর থেকে ${escapeHtml(meta.label)} দিয়ে আর সাইন-ইন করা যাবে না।</p>
         <div class="input-box-actions">
-          <button class="tw-cancel-btn" id="unlinkGCancel">বাতিল</button>
-          <button class="tw-save-btn" id="unlinkGYes">আনলিংক করুন</button>
+          <button class="tw-cancel-btn" id="unlinkPCancel">বাতিল</button>
+          <button class="tw-save-btn" id="unlinkPYes">আনলিংক করুন</button>
         </div>
       </div>
     </div>`;
   document.body.appendChild(wrap);
   const remove = () => wrap.remove();
   wrap.addEventListener('click', (e) => { if(e.target === wrap) remove(); });
-  document.getElementById('unlinkGClose').onclick = remove;
-  document.getElementById('unlinkGCancel').onclick = remove;
-  document.getElementById('unlinkGYes').onclick = async () => {
+  document.getElementById('unlinkPClose').onclick = remove;
+  document.getElementById('unlinkPCancel').onclick = remove;
+  document.getElementById('unlinkPYes').onclick = async () => {
     remove();
     const fbUser = fbAuth.currentUser;
     if(!fbUser) return;
     try{
-      await fbUser.unlink('google.com');
-      if(state.user){ state.user.providerIds = (state.user.providerIds || []).filter(p => p !== 'google.com'); }
-      showToast('Google আনলিংক করা হয়েছে');
+      await fbUser.unlink(providerId);
+      if(state.user){ state.user.providerIds = (state.user.providerIds || []).filter(p => p !== providerId); }
+      showToast(`${meta.label} আনলিংক করা হয়েছে`);
       openProfileModal();
     }catch(e){
       showToast('আনলিংক করতে ব্যর্থ হয়েছে, আবার চেষ্টা করুন');
@@ -1313,11 +1373,11 @@ async function deleteAccountEverywhere(fbUser){
 // password accounts get an inline "confirm your password" modal.
 async function reauthenticateThenDelete(fbUser){
   const providerId = fbUser.providerData && fbUser.providerData[0] && fbUser.providerData[0].providerId;
+  const meta = getSocialProvider(providerId);
 
-  if(providerId === 'google.com'){
+  if(meta){
     try{
-      const provider = new firebase.auth.GoogleAuthProvider();
-      await fbUser.reauthenticateWithPopup(provider);
+      await fbUser.reauthenticateWithPopup(meta.factory());
       await deleteAccountEverywhere(fbUser);
     }catch(e){
       showToast('যাচাই ব্যর্থ হয়েছে, অ্যাকাউন্ট মুছা যায়নি — আবার চেষ্টা করুন');
