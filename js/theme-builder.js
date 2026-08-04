@@ -378,7 +378,11 @@ function tbCurrentStreak(){
     return Math.max(s, state.bestStreak||0);
   }catch(e){ return state.bestStreak||0; }
 }
-function customThemeUnlocked(){ return tbCurrentStreak() >= 30; }
+// এডমিন প্যানেল থেকে যে কাউকে সরাসরি কাস্টম থিম অ্যাক্সেস দেওয়া যায়
+// (user.customThemeGranted) — সেটা থাকলে ৩০-দিনের স্ট্রিক শর্ত বাইপাস হয়।
+function customThemeUnlocked(){
+  return tbCurrentStreak() >= 30 || !!(state.user && state.user.customThemeGranted);
+}
 
 // ---- The card appended to the end of the theme-picker grid (see js/app.js openThemePicker) ----
 function appendCustomThemeCard(grid, t){
