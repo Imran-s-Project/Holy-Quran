@@ -1,0 +1,131 @@
+/* ==== status.css — WhatsApp-style status/stories ring bar + composer + viewer ==== */
+
+/* ---- Ring bar (sits under the রমজান banner, above the আয়াত-অফ-দ্য-ডে card) ---- */
+.status-bar{
+  display:flex;gap:14px;overflow-x:auto;padding:12px 4px 14px;margin-bottom:2px;
+  scrollbar-width:none;
+}
+.status-bar::-webkit-scrollbar{display:none;}
+.status-ring-item{display:flex;flex-direction:column;align-items:center;gap:5px;flex-shrink:0;width:62px;}
+.status-ring-wrap{position:relative;width:58px;height:58px;}
+.status-ring-btn{
+  width:58px;height:58px;border-radius:50%;border:none;background:none;cursor:pointer;padding:3px;
+  display:flex;align-items:center;justify-content:center;
+}
+.status-ring-btn.unseen{background:conic-gradient(from 45deg, var(--gold), var(--teal), var(--gold));}
+.status-ring-btn.seen{background:var(--line);}
+.status-ring-btn.empty{background:var(--line);}
+.status-ring-avatar{
+  width:100%;height:100%;border-radius:50%;background:var(--teal);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;
+  font-weight:700;font-size:19px;border:2.5px solid var(--parchment);
+}
+.status-ring-avatar-empty{background:var(--panel);color:var(--ink-soft);}
+.status-ring-plus{
+  position:absolute;right:-2px;bottom:-2px;width:22px;height:22px;border-radius:50%;
+  background:var(--gold);color:#231a06;border:2.5px solid var(--parchment);
+  display:flex;align-items:center;justify-content:center;font-size:11px;cursor:pointer;padding:0;
+}
+.status-ring-label{
+  font-size:11.5px;color:var(--ink-soft);font-family:var(--font-ui,'Hind Siliguri'),sans-serif;
+  max-width:62px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+
+/* ---- Composer modal ---- */
+.status-composer-box{max-width:460px;}
+.status-type-tabs{display:flex;gap:8px;margin-bottom:14px;}
+.status-type-tab{
+  flex:1;padding:10px 8px;border-radius:10px;border:1px solid var(--line);background:var(--panel);
+  color:var(--ink-soft);font-family:var(--font-ui,'Hind Siliguri'),sans-serif;font-size:13.5px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.status-type-tab.active{background:var(--teal);color:#fff;border-color:var(--teal);}
+.status-text-preview{
+  border-radius:14px;min-height:180px;display:flex;align-items:center;justify-content:center;padding:20px;margin-bottom:8px;
+}
+.status-text-preview textarea{
+  width:100%;min-height:140px;background:none;border:none;outline:none;resize:none;
+  color:#fff;font-size:19px;text-align:center;font-family:var(--font-heading,'Noto Serif Bengali'),serif;
+  line-height:1.5;
+}
+.status-text-preview textarea::placeholder{color:rgba(255,255,255,.6);}
+.status-char-count{text-align:right;font-size:11.5px;color:var(--ink-soft);margin-bottom:12px;}
+.status-bg-swatches{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+.status-bg-swatch{
+  width:32px;height:32px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;
+}
+.status-bg-swatch.active{border-color:var(--gold);}
+.status-ayah-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.status-ayah-row label{width:78px;flex-shrink:0;font-size:13.5px;color:var(--ink-soft);font-family:var(--font-ui,'Hind Siliguri'),sans-serif;}
+.status-ayah-row select, .status-ayah-row input{
+  flex:1;background:var(--parchment);border:1px solid var(--line);color:var(--ink);border-radius:8px;
+  padding:9px 10px;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;font-size:13.5px;min-width:0;
+}
+.status-hint{font-size:11.5px;color:var(--ink-soft);margin:-2px 0 10px 88px;}
+.status-random-btn{
+  display:flex;align-items:center;gap:7px;background:none;border:1px dashed var(--line);color:var(--teal);
+  border-radius:8px;padding:8px 12px;font-size:13px;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;
+  cursor:pointer;margin-bottom:4px;
+}
+.status-duration-row{display:flex;flex-wrap:wrap;gap:7px;margin:14px 0 16px;}
+.status-duration-btn{
+  padding:7px 13px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink-soft);
+  font-size:12.5px;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;cursor:pointer;
+}
+.status-duration-btn.active{background:var(--gold);border-color:var(--gold);color:#231a06;font-weight:700;}
+.status-submit-btn{
+  width:100%;padding:13px;border-radius:10px;border:none;background:var(--teal);color:#fff;font-size:15px;
+  font-family:var(--font-ui,'Hind Siliguri'),sans-serif;font-weight:700;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.status-submit-btn:disabled{opacity:.6;}
+
+/* ---- Full-screen story viewer ---- */
+.status-viewer{position:fixed;inset:0;background:#000;z-index:95;}
+.status-viewer-progress{
+  position:absolute;top:0;left:0;right:0;display:flex;gap:4px;padding:10px 10px 0;z-index:3;
+}
+.status-progress-seg{flex:1;height:3px;border-radius:3px;background:rgba(255,255,255,.3);overflow:hidden;}
+.status-progress-fill{display:block;height:100%;width:0;background:#fff;border-radius:3px;}
+.status-progress-fill.full{width:100%;}
+.status-viewer-header{
+  position:absolute;top:20px;left:0;right:0;display:flex;align-items:center;gap:10px;padding:0 12px;z-index:3;
+}
+.status-viewer-avatar .status-viewer-avatar-inner{width:34px;height:34px;font-size:15px;border-width:2px;}
+.status-viewer-who{flex:1;min-width:0;display:flex;flex-direction:column;}
+.status-viewer-name{color:#fff;font-size:14px;font-weight:700;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.status-viewer-time{color:rgba(255,255,255,.7);font-size:11.5px;}
+.status-viewer-icon-btn{
+  width:34px;height:34px;border-radius:50%;background:rgba(255,255,255,.12);border:none;color:#fff;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:14px;
+}
+.status-viewer-body{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;}
+.status-slide{width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:70px 26px;text-align:center;}
+.status-slide-text p{
+  color:#fff;font-size:clamp(20px,5.2vw,32px);font-family:var(--font-heading,'Noto Serif Bengali'),serif;
+  line-height:1.6;white-space:pre-wrap;word-break:break-word;
+}
+.status-slide-ayah{background:radial-gradient(circle at 50% 0%, #1B342C, #0A211D 70%);}
+.status-ayah-badge{
+  color:var(--gold, #D9B45E);font-size:13px;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;
+  margin-bottom:22px;display:flex;align-items:center;gap:7px;
+}
+.status-slide-arabic{
+  color:#fff;font-family:'Amiri',serif;font-size:clamp(24px,6vw,38px);line-height:2;margin-bottom:22px;max-width:640px;
+}
+.status-slide-translation{
+  color:rgba(255,255,255,.88);font-family:var(--font-heading,'Noto Serif Bengali'),serif;
+  font-size:clamp(15px,3.6vw,19px);line-height:1.8;max-width:600px;
+}
+.status-ayah-reciter{
+  margin-top:26px;color:rgba(255,255,255,.6);font-size:12.5px;font-family:var(--font-ui,'Hind Siliguri'),sans-serif;
+  display:flex;align-items:center;gap:7px;
+}
+.status-viewer-zone{position:absolute;top:0;bottom:0;width:34%;z-index:2;cursor:pointer;}
+.status-viewer-zone-left{left:0;}
+.status-viewer-zone-right{right:0;}
+
+@media (min-width:720px){
+  .status-viewer-body, .status-slide{max-width:520px;margin:0 auto;}
+  .status-viewer{display:flex;justify-content:center;background:#000;}
+}
