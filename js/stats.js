@@ -291,19 +291,19 @@ function renderAccountArea(){
             <div class="account-avatar"${avatarStyle}>${avatarGlyph(user)}</div>
           </div>
           <div class="account-info">
-            <div class="account-name">${escapeHtml(user.name || 'ব্যবহারকারী')}</div>
+            <div class="account-name">${escapeHtml(user.name || tr('profile_default_user'))}</div>
             ${user.email ? `<div class="account-email"><i class="fa-regular fa-envelope"></i><span>${escapeHtml(user.email)}</span></div>` : ''}
           </div>
           <div class="account-strip-chevron-wrap"><i class="fa-solid fa-chevron-right account-strip-chevron"></i></div>
         </button>
-        <button class="account-logout-btn" id="statsLogoutBtn" aria-label="লগ আউট"><i class="fa-solid fa-right-from-bracket"></i></button>
+        <button class="account-logout-btn" id="statsLogoutBtn" aria-label="${tr('profile_logout')}"><i class="fa-solid fa-right-from-bracket"></i></button>
       </div>`;
   }
   return `
     <div class="stats-card auth-prompt-card">
       <div class="auth-prompt-icon"><i class="fa-solid fa-user-plus"></i></div>
-      <div class="auth-prompt-text">আপনার ব্যাজগুলো হারাতে না চাইলে এক্ষনি সাইন আপ করুন! অথবা একাউন্ট থাকবে প্রগ্রেস গুলা সব সময় আপডেট করার জন্য লগ ইন করুন যাতে আপনার অগ্রগতি এবং ব্যাজগুলি স্বয়ংক্রিয়ভাবে আপডেট এবং সংরক্ষিত থাকে।</div>
-      <button class="auth-cta-btn" id="statsAuthBtn">সাইন আপ / লগ ইন</button>
+      <div class="auth-prompt-text">${tr('profile_auth_prompt_text')}</div>
+      <button class="auth-cta-btn" id="statsAuthBtn">${tr('profile_auth_prompt_btn')}</button>
     </div>`;
 }
 
