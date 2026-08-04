@@ -49,6 +49,18 @@ function refreshCurrentView(){
 }
 
 // ---------- Sign-in / sign-up / forgot-password overlay ----------
+// একটা রি-ইউজেবল সোশ্যাল-সাইন-ইন রো — Google/Facebook/X/GitHub/Microsoft
+// (js/auth.js নিচের SOCIAL_PROVIDERS লিস্ট থেকে) — চয়েস, সাইন-আপ আর লগইন,
+// এই তিনটা স্ক্রিনেই একই রো বসানো হয়, যাতে যেখান থেকেই শুরু হোক না কেন
+// এক ট্যাপে যেকোনো প্ল্যাটফর্ম দিয়ে সরাসরি অ্যাকাউন্ট তৈরি/সাইন-ইন করা যায়।
+function socialAuthButtonsHtml(){
+  return `
+    <div class="auth-social-divider"><span>অথবা</span></div>
+    <div class="auth-social-row">
+      ${SOCIAL_PROVIDERS.map(p => `<button type="button" class="auth-social-btn" data-social-provider="${p.id}" style="--brand-color:${p.color}" aria-label="${escapeHtml(p.label)} দিয়ে সাইন ইন করুন" title="${escapeHtml(p.label)}"><i class="${p.icon}"></i></button>`).join('')}
+    </div>`;
+}
+
 // A single full-screen overlay with four "screens" swapped in and out,
 // mirroring the reference design: choice → (signup | login) → forgot.
 function ensureAuthOverlay(){
@@ -75,7 +87,7 @@ function ensureAuthOverlay(){
         <h2 class="auth-title">অ্যাকাউন্ট তৈরি করুন</h2>
         <p class="auth-sub">আপনার অর্জন ও পড়ার অগ্রগতি সুরক্ষিত রাখুন। আপনার সম্পূর্ণ পরিসংখ্যান এক জায়গায় দেখুন।</p>
         <button class="auth-cta-btn" id="authGoSignup">ইমেইল দিয়ে সাইন আপ করুন</button>
-        <button class="auth-google-btn" id="authGoogleFromChoice"><i class="fa-brands fa-google"></i> গুগল দিয়ে সাইন ইন করুন</button>
+        ${socialAuthButtonsHtml()}
         <div class="auth-switch">অলরেডি অ্যাকাউন্ট আছে? <a href="javascript:void(0)" id="authGoLogin">লগইন করুন</a></div>
       </div>
     </div>
@@ -103,6 +115,7 @@ function ensureAuthOverlay(){
         <input class="auth-field" id="suPasswordConfirm" type="password" placeholder="পাসওয়ার্ড নিশ্চিত করুন">
         <div class="auth-error" id="suError"></div>
         <button class="auth-cta-btn has-icon" id="suSubmit"><span>সাইন আপ</span><span class="cta-icon-dot"><i class="fa-solid fa-plus"></i></span></button>
+        ${socialAuthButtonsHtml()}
       </div>
     </div>
 
@@ -124,7 +137,7 @@ function ensureAuthOverlay(){
         <div class="auth-error" id="liError"></div>
         <button class="auth-cta-btn" id="liSubmit">লগইন করুন</button>
         <div class="auth-switch"><a href="javascript:void(0)" id="liForgot">পাসওয়ার্ড ভুলে গেছেন?</a></div>
-        <button class="auth-google-btn" id="authGoogleFromLogin"><i class="fa-brands fa-google"></i> গুগল দিয়ে সাইন ইন করুন</button>
+        ${socialAuthButtonsHtml()}
       </div>
     </div>
 
@@ -150,8 +163,9 @@ function ensureAuthOverlay(){
   document.getElementById('authGoSignup').onclick = () => showAuthScreen('signup');
   document.getElementById('authGoLogin').onclick = () => showAuthScreen('login');
   document.getElementById('liForgot').onclick = () => showAuthScreen('forgot');
-  document.getElementById('authGoogleFromChoice').onclick = handleGoogleSignIn;
-  document.getElementById('authGoogleFromLogin').onclick = handleGoogleSignIn;
+  overlay.querySelectorAll('[data-social-provider]').forEach(btn => {
+    btn.onclick = () => handleSocialSignIn(btn.getAttribute('data-social-provider'), btn);
+  });
   document.getElementById('suSubmit').onclick = handleEmailSignup;
   document.getElementById('liSubmit').onclick = handleEmailLogin;
   document.getElementById('fgSubmit').onclick = handlePasswordReset;
@@ -184,9 +198,15 @@ function showAuthScreen(name){
 }
 
 // ---------- Actions ----------
-async function handleGoogleSignIn(){
-  const provider = new firebase.auth.GoogleAuthProvider();
+// যেকোনো SOCIAL_PROVIDERS এন্ট্রি (Google/Facebook/X/GitHub/Microsoft) দিয়ে
+// সাইন-ইন করায় — নতুন ইমেইল হলে Firebase নিজে থেকেই নতুন অ্যাকাউন্ট বানিয়ে
+// দেয়, তাই এটাই একইসাথে "সোশ্যাল দিয়ে সাইন আপ" আর "সোশ্যাল দিয়ে লগইন"।
+async function handleSocialSignIn(providerId, triggerBtn){
+  const meta = getSocialProvider(providerId);
+  if(!meta) return;
+  const provider = meta.factory();
   if(typeof markFreshLoginIntent === 'function') markFreshLoginIntent(); // লগইন হিস্টোরি/ইমেইল অ্যালার্টের জন্য — js/session-security.js
+  if(triggerBtn){ triggerBtn.disabled = true; triggerBtn.classList.add('is-busy'); }
   try{
     await fbAuth.signInWithPopup(provider);
     closeAuthFlow();
@@ -194,10 +214,16 @@ async function handleGoogleSignIn(){
     // Popups are blocked inside some installed-PWA / in-app browser contexts —
     // fall back to a full-page redirect, which always works.
     if(e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment' || e.code === 'auth/cancelled-popup-request')){
-      try{ await fbAuth.signInWithRedirect(provider); }catch(e2){ showToast('গুগল সাইন-ইন ব্যর্থ হয়েছে'); }
+      try{ await fbAuth.signInWithRedirect(provider); }catch(e2){ showToast(`${meta.label} দিয়ে সাইন-ইন ব্যর্থ হয়েছে`); }
+    } else if(e && e.code === 'auth/account-exists-with-different-credential'){
+      showToast('এই ইমেইলে আগে থেকেই অন্য পদ্ধতিতে অ্যাকাউন্ট আছে — সেই পদ্ধতিতে লগইন করে প্রোফাইল থেকে এটি লিংক করে নিন');
+    } else if(e && e.code === 'auth/operation-not-allowed'){
+      showToast(`${meta.label} সাইন-ইন এখনো Firebase কনসোলে চালু করা হয়নি`);
     } else if(e && e.code !== 'auth/popup-closed-by-user'){
-      showToast('গুগল সাইন-ইন ব্যর্থ হয়েছে');
+      showToast(`${meta.label} দিয়ে সাইন-ইন ব্যর্থ হয়েছে`);
     }
+  }finally{
+    if(triggerBtn){ triggerBtn.disabled = false; triggerBtn.classList.remove('is-busy'); }
   }
 }
 
