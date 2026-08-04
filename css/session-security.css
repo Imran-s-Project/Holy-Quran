@@ -46,3 +46,29 @@
 }
 .session-revoke-btn:active{ background: rgba(192,57,43,.08); }
 .session-revoke-btn:disabled{ opacity: .5; }
+
+/* ---- নতুন সংযোজন: সামারি লাইন, ডিভাইস ব্যাজ, ম্যাপ লিংক, ইমেইল-স্ট্যাটাস ট্যাগ ---- */
+.session-history-summary{
+  font-size: 11.5px; color: var(--ink-soft); background: var(--parchment);
+  border: 1px solid var(--line); border-radius: 10px; padding: 7px 11px; margin-bottom: 10px;
+  display: flex; align-items: center; gap: 6px;
+}
+.session-device-badge{
+  font-size: 10.5px; color: var(--ink-soft); background: var(--parchment);
+  border: 1px solid var(--line); border-radius: 20px; padding: 2px 8px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.session-badge-new{ background: rgba(243,201,105,.2); color: #8A6D1F; }
+.session-badge-muted{
+  font-size: 10px; color: var(--ink-soft); background: transparent;
+  border: 1px dashed var(--line); padding: 2px 7px;
+}
+.session-item-meta-sub{ opacity: .85; }
+.session-item-extra{
+  margin-top: 5px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+}
+.session-map-link{
+  font-size: 11px; color: var(--ink); text-decoration: none; opacity: .8;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.session-map-link:active{ opacity: 1; }
