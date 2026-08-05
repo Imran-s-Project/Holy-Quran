@@ -418,14 +418,7 @@ async function submitStatus(){
     closeStatusComposer();
     showToast('স্ট্যাটাস পোস্ট করা হয়েছে');
   }catch(e){
-    console.error('স্ট্যাটাস পোস্ট ব্যর্থ:', e);
-    if(e && e.code === 'permission-denied'){
-      showToast('স্ট্যাটাস পোস্ট করার অনুমতি নেই — Firestore Rules-এ statuses কালেকশনের rule যোগ/পাবলিশ করা আছে কিনা দেখুন', 'error');
-    } else if(e && e.message === 'invalid ayah'){
-      showToast('আয়াত নম্বর সঠিক নয় — সূরা ও আয়াত নম্বর যাচাই করুন');
-    } else {
-      showToast('স্ট্যাটাস পোস্ট করা যায়নি — আবার চেষ্টা করুন (বিস্তারিত জানতে ব্রাউজার Console দেখুন)');
-    }
+    showToast('স্ট্যাটাস পোস্ট করা যায়নি — আয়াত নম্বর যাচাই করুন বা আবার চেষ্টা করুন');
   }
   btn.disabled = false;
 }
