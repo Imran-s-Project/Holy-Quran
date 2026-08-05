@@ -38,10 +38,6 @@ function initAuth(){
     } else {
       state.user = null;
       if(typeof stopSessionHeartbeat === 'function') stopSessionHeartbeat();
-      // সাইন-আউটের পরও ডিভাইসে "custom" থিম সিলেক্টেড থেকে যেতে পারে (এটা
-      // device-wide সংরক্ষিত) — এখন কেউ সাইন-ইন করা নেই বা গেস্ট, তাই
-      // অ্যাকাউন্ট-ভিত্তিক অনুমতি/স্ট্রিক অনুযায়ী আবার যাচাই করা হচ্ছে।
-      if(typeof enforceCustomThemeEntitlement === 'function') enforceCustomThemeEntitlement();
       refreshCurrentView();
     }
   });
@@ -399,15 +395,6 @@ async function onSignedIn(fbUser){
       }
     }
   }catch(e){ console.warn('Cloud fetch failed:', e); }
-
-  // এই অ্যাকাউন্টের প্রকৃত কাস্টম-থিম অনুমতি এইমাত্র জানা গেল (গ্রান্টেড না
-  // থাকলে customThemeGranted ওপরে সেট-ই হয়নি, অর্থাৎ falsy) — ডিভাইসে আগে
-  // থেকে "custom" সিলেক্টেড থাকলে (হয়তো আগের কোনো গ্রান্টেড অ্যাকাউন্ট থেকে,
-  // যেহেতু থিম সিলেকশন ডিভাইস-ওয়াইড সংরক্ষিত হয়) কিন্তু এই অ্যাকাউন্ট এখনো
-  // এটার যোগ্য না হলে, ডিফল্ট থিমে ফিরিয়ে আনা হয়। doc.exists না হলেও
-  // (নতুন অ্যাকাউন্ট) বা cloud fetch ব্যর্থ হলেও এই চেক চলবে বলে try/catch-এর
-  // বাইরে রাখা হয়েছে।
-  if(typeof enforceCustomThemeEntitlement === 'function') enforceCustomThemeEntitlement();
 
   refreshCurrentView();
   queueCloudSync(true); // push the merged result back up immediately
@@ -1357,36 +1344,12 @@ async function saveProfileChanges({ name, position, avatarColor, avatarIcon, pho
       throw new Error('restricted: প্রোফাইলের নাম/পদবি/বায়ো এখন পরিবর্তন করা যাবে না');
     }
   }
-  const nameChanged = name !== state.user.name;
   if(fbUser.displayName !== name){ await fbUser.updateProfile({ displayName: name }); }
   await fbDb.collection('users').doc(fbUser.uid).set({
     name, position, avatarColor, avatarIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah
   }, { merge: true });
   Object.assign(state.user, { name, position, avatarColor, avatarIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah });
   refreshCurrentView();
-  // নাম পরিবর্তনের সময় এই অ্যাকাউন্টের চলমান (non-expired) স্ট্যাটাসগুলোতেও
-  // পোস্ট-টাইমে "snapshot" করে রাখা পুরনো নামটা আপডেট করে দেওয়া হয় — নাহলে
-  // প্রোফাইলে নতুন নাম দেখা যাবে কিন্তু স্ট্যাটাস রিং/ভিউয়ারে পুরনো নামই থেকে যাবে।
-  if(nameChanged) syncNameIntoOwnActiveStatuses(fbUser.uid, name).catch(e => console.warn('স্ট্যাটাসে নাম সিঙ্ক ব্যর্থ:', e));
-}
-
-// See saveProfileChanges() above — keeps already-posted, still-live statuses
-// showing the account's CURRENT name instead of the name that was current
-// at post time. Firestore rules already allow this (owner has full update
-// rights on their own status docs), so no rules change is needed.
-async function syncNameIntoOwnActiveStatuses(uid, name){
-  const now = Date.now();
-  const snap = await fbDb.collection('statuses').where('uid', '==', uid).get();
-  const batch = fbDb.batch();
-  let count = 0;
-  snap.forEach(doc => {
-    const data = doc.data();
-    if((data.expiresAt || 0) <= now) return; // মেয়াদোত্তীর্ণ স্ট্যাটাস বাদ
-    if(data.name === name) return;
-    batch.update(doc.ref, { name });
-    count++;
-  });
-  if(count) await batch.commit();
 }
 
 async function handleSendPasswordReset(email){
@@ -1562,17 +1525,6 @@ async function performAccountDeletion(){
 // Errors from either step (e.g. auth/requires-recent-login) propagate to
 // the caller so it can reauthenticate and retry.
 async function deleteAccountEverywhere(fbUser){
-  // Auth অ্যাকাউন্ট মুছে ফেলার আগেই নিজের পোস্ট করা স্ট্যাটাসগুলো মুছতে হবে —
-  // কারণ Firestore rules-এ স্ট্যাটাস delete করার অনুমতি owner-only
-  // (resource.data.uid == request.auth.uid), Auth অ্যাকাউন্ট একবার চলে গেলে
-  // আর কারো (এমনকি এডমিন ছাড়া) এই ডকগুলো মোছার অধিকার থাকে না — ফলে সেগুলো
-  // চিরকাল "এতিম" হয়ে থেকে যায়। তাই এটা user.uid এখনো valid থাকা অবস্থাতেই,
-  // ক্রম অনুযায়ী প্রথমে করা হচ্ছে।
-  try{
-    await deleteOwnStatuses(fbUser.uid);
-  }catch(e){
-    console.warn('স্ট্যাটাস মুছতে ব্যর্থ (অ্যাকাউন্ট ডিলিট চলছে):', e);
-  }
   try{
     await fbDb.collection('users').doc(fbUser.uid).delete();
   }catch(e){
@@ -1580,20 +1532,6 @@ async function deleteAccountEverywhere(fbUser){
   }
   await fbUser.delete();
   showToast('অ্যাকাউন্ট স্থায়ীভাবে মুছে ফেলা হয়েছে');
-}
-
-// Deletes every "statuses" doc owned by this uid (expired or not — no reason
-// to leave expired-but-undeleted ones behind either). Batched in chunks of
-// 400 to stay safely under Firestore's 500-writes-per-batch limit.
-async function deleteOwnStatuses(uid){
-  const snap = await fbDb.collection('statuses').where('uid', '==', uid).get();
-  if(snap.empty) return;
-  const docs = snap.docs;
-  for(let i = 0; i < docs.length; i += 400){
-    const batch = fbDb.batch();
-    docs.slice(i, i + 400).forEach(doc => batch.delete(doc.ref));
-    await batch.commit();
-  }
 }
 
 // Re-proves identity, then retries the delete — without ever sending the
