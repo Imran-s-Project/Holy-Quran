@@ -384,6 +384,23 @@ function customThemeUnlocked(){
   return tbCurrentStreak() >= 30 || !!(state.user && state.user.customThemeGranted);
 }
 
+// ---- Entitlement guard (device vs. account mismatch) ----
+// state.theme (and the saved colour config under TB_STORAGE_KEY) live in
+// device-wide IDBKV, not per-account — that's true of most local state in
+// this app by design. But "custom" is special: it's a GRANTED privilege,
+// not a preference. Without this guard, once account A unlocks/saves a
+// custom theme on a shared device, applyTheme() at next load would just
+// paint body[data-theme="custom"] for whoever is signed in — including
+// account B, who was never granted it and hasn't earned the 30-day streak.
+// Call this any time the signed-in identity changes: after a fresh
+// sign-in's cloud data (customThemeGranted) has loaded, and on sign-out.
+function enforceCustomThemeEntitlement(){
+  if(state.theme !== 'custom') return;
+  if(customThemeUnlocked()) return; // current account/guest genuinely has access — leave it
+  if(typeof applyTheme === 'function') applyTheme('emerald');
+  if(typeof showToast === 'function') showToast('কাস্টম থিম এই অ্যাকাউন্টে উন্মুক্ত নয়, তাই ডিফল্ট থিমে ফেরত আনা হয়েছে');
+}
+
 // ---- The card appended to the end of the theme-picker grid (see js/app.js openThemePicker) ----
 function appendCustomThemeCard(grid, t){
   if(!grid) return;
