@@ -1,0 +1,101 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // এডমিন কিনা চেক করার হেল্পার ফাংশন
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    match /admins/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false; // Firebase Console থেকে ম্যানুয়ালি যোগ/বাদ দিতে হবে
+    }
+
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read, delete: if isAdmin(); // এডমিন প্যানেল থেকে দেখা/মুছার জন্য
+
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'statusReason', 'statusUpdatedAt', 'customThemeGranted', 'name', 'position', 'bio']);
+
+      match /sessions/{sessionId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+        allow read, delete: if isAdmin();
+      }
+    }
+
+    match /push_subscriptions/{deviceId} {
+      // প্রার্থনার নোটিফিকেশন লগইন ছাড়াই কাজ করে বলে create/update-এ কোনো
+      // request.auth শর্ত নেই — শুধু ফিল্ডের শেপ/টাইপ যাচাই করা হয়। delete-ও
+      // একই মডেলে খোলা রাখা হলো (js/push.js:disablePrayerPush() নোটিফিকেশন
+      // বন্ধ করার সময় নিজের deviceId-এর ডক ডিলিট করার চেষ্টা করে — আগে এখানে
+      // delete: if false ছিল বলে সেটা সবসময় নিঃশব্দে ব্যর্থ হতো এবং টগল অফ
+      // করলেও সাবস্ক্রিপশন Firestore-এ থেকে যেত)।
+      allow read: if false;
+      allow create, update: if request.resource.data.keys().hasOnly(['token','lat','lon','method','updatedAt'])
+        && request.resource.data.token is string
+        && request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90
+        && request.resource.data.lon is number && request.resource.data.lon >= -180 && request.resource.data.lon <= 180;
+      allow delete: if true;
+    }
+
+    match /siteConfig/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    match /system_errors/{errorId} {
+      allow create: if request.resource.data.keys().hasOnly(['message','stack','severity','page','userAgent','uid','resolved','timestamp'])
+        && request.resource.data.resolved == false;
+      allow read, update, delete: if isAdmin();
+    }
+
+    // WhatsApp-style Status/Stories (js/status.js). Everyone can read (even
+    // signed-out visitors); only the signed-in owner can create their own
+    // story, and only for their own account when it isn't restricted/blocked.
+    // Kept in sync with js/status.js — postStatusDoc() writes exactly this
+    // field shape, and submitStatus() is written to match every condition
+    // below so a well-formed post can never be rejected by a mismatch here.
+    match /statuses/{statusId} {
+      allow read: if true;
+
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+          ['uid','name','avatarColor','avatarIcon','type','text','bg',
+           'surah','ayah','surahName','arabic','translation',
+           'reciter','reciterName','audioUrl','createdAt','expiresAt',
+           'viewers','reactions'])
+        && request.resource.data.type in ['text','ayah']
+        && request.resource.data.createdAt is number
+        && request.resource.data.expiresAt is number
+        && request.resource.data.expiresAt > request.resource.data.createdAt
+        && request.resource.data.viewers == {}
+        && request.resource.data.reactions == {}
+        && !(exists(/databases/$(database)/documents/users/$(request.auth.uid))
+             && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status in ['restricted', 'blocked']);
+
+      // Branch 1: the owner may update ANY field on their own story — this is
+      // what js/status.js:syncOwnStatusesProfile() relies on to fix a rename
+      // showing on already-posted, still-active stories.
+      // Branch 2/3: any other signed-in user may append ONLY their own key
+      // inside viewers/reactions (view tracking + love-react), nothing else.
+      allow update: if request.auth != null && (
+        resource.data.uid == request.auth.uid ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers'])
+          && request.resource.data.viewers.diff(resource.data.get('viewers', {})).affectedKeys().hasOnly([request.auth.uid])
+          && request.resource.data.viewers[request.auth.uid].keys().hasOnly(['name','avatarColor','avatarIcon','viewedAt'])) ||
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+          && request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid]))
+      );
+
+      // Owner deletes their own story (also used in bulk by
+      // js/auth.js:deleteAccountEverywhere() -> deleteAllStatusesForUser()
+      // right before the account itself is removed), or an admin moderates.
+      allow delete: if request.auth != null && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+  }
+}
