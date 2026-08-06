@@ -87,12 +87,37 @@ function tbContrastRow(label, hexA, hexB){
 }
 
 // ---- Persistence (own IDBKV key, kept separate from the built-in theme system) ----
+// Namespaced per account (by Firebase uid), not just per device. Custom
+// theme colors are a gated/earned asset (30-day streak or an admin grant),
+// so they belong to the account that unlocked them — without this, signing
+// into a second account on the same phone/browser would inherit whatever
+// design the first account built, unlocked or not.
 const TB_STORAGE_KEY = 'qr_custom_theme';
+function tbStorageKey(){
+  const uid = (state.user && state.user.uid) || 'guest';
+  return TB_STORAGE_KEY + '_' + uid;
+}
+// One-time migration: earlier versions kept one shared, device-wide config
+// under TB_STORAGE_KEY. The first time this runs for whichever account is
+// signed in, that legacy config is claimed for the current account and the
+// shared key is removed, so it can't also leak into the next account that
+// signs in on this device afterwards.
+function tbMigrateLegacyStorage(){
+  try{
+    const key = tbStorageKey();
+    if(IDBKV.get(key)) return; // this account already has its own config
+    const legacy = IDBKV.get(TB_STORAGE_KEY);
+    if(legacy){
+      IDBKV.set(key, legacy);
+      IDBKV.remove(TB_STORAGE_KEY);
+    }
+  }catch(e){}
+}
 function tbLoadRaw(){
-  try{ const raw = IDBKV.get(TB_STORAGE_KEY); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
+  try{ tbMigrateLegacyStorage(); const raw = IDBKV.get(tbStorageKey()); return raw ? JSON.parse(raw) : null; }catch(e){ return null; }
 }
 function tbSaveRaw(cfg){
-  try{ IDBKV.set(TB_STORAGE_KEY, JSON.stringify(cfg)); }catch(e){}
+  try{ IDBKV.set(tbStorageKey(), JSON.stringify(cfg)); }catch(e){}
 }
 
 // ---- Derive the full CSS-variable set from the 5 picked colors ----
@@ -345,18 +370,41 @@ function tbMergeWithDefaults(saved){
 
 // Called once at startup (from js/app.js, BEFORE initTheme() paints the
 // saved theme) so every premium extra is live from the very first paint.
+// Also re-called on every sign-in/sign-out/account-switch (see
+// reloadCustomThemeForCurrentUser below) — so when the active account has
+// no custom theme of its own, this now resets every premium extra (font
+// pair, ambient decorations, home-section toggles, player/nav/modal
+// styling) back to defaults instead of silently leaving a previous
+// account's choices applied.
 function loadCustomTheme(){
   const cfg = tbLoadRaw();
-  if(!cfg) return;
-  const full = tbMergeWithDefaults(cfg);
+  const full = tbMergeWithDefaults(cfg); // defaults when this account has no custom theme
   tbApplyCSS(tbDeriveVars(full));
-  tbRegisterInThemesList(full);
+  if(cfg){
+    tbRegisterInThemesList(full);
+  } else {
+    const idx = THEMES.findIndex(th => th.id === 'custom');
+    if(idx >= 0) THEMES.splice(idx, 1);
+  }
   tbApplyFont(full.fontPair);
   tbApplyAmbient(full);
   tbApplyHomeSections(full);
   tbApplyPlayer(full);
   tbApplyNavHeader(full);
   tbApplyModal(full);
+}
+
+// Called from js/auth.js right after state.user changes (sign-in, sign-out,
+// switching to a different account) so a previously-loaded custom theme
+// never carries over to the wrong account.
+function reloadCustomThemeForCurrentUser(){
+  loadCustomTheme();
+  // If the device was actively displaying the custom theme but the account
+  // now signed in never designed one of its own, fall back to a built-in
+  // theme rather than keep running the previous account's premium design.
+  if(state.theme === 'custom' && !tbLoadRaw() && typeof applyTheme === 'function' && typeof THEMES !== 'undefined'){
+    applyTheme(THEMES[0].id);
+  }
 }
 
 // Small Bengali/English label patch so the custom card can use the same
@@ -382,23 +430,6 @@ function tbCurrentStreak(){
 // (user.customThemeGranted) — সেটা থাকলে ৩০-দিনের স্ট্রিক শর্ত বাইপাস হয়।
 function customThemeUnlocked(){
   return tbCurrentStreak() >= 30 || !!(state.user && state.user.customThemeGranted);
-}
-
-// ---- Entitlement guard (device vs. account mismatch) ----
-// state.theme (and the saved colour config under TB_STORAGE_KEY) live in
-// device-wide IDBKV, not per-account — that's true of most local state in
-// this app by design. But "custom" is special: it's a GRANTED privilege,
-// not a preference. Without this guard, once account A unlocks/saves a
-// custom theme on a shared device, applyTheme() at next load would just
-// paint body[data-theme="custom"] for whoever is signed in — including
-// account B, who was never granted it and hasn't earned the 30-day streak.
-// Call this any time the signed-in identity changes: after a fresh
-// sign-in's cloud data (customThemeGranted) has loaded, and on sign-out.
-function enforceCustomThemeEntitlement(){
-  if(state.theme !== 'custom') return;
-  if(customThemeUnlocked()) return; // current account/guest genuinely has access — leave it
-  if(typeof applyTheme === 'function') applyTheme('emerald');
-  if(typeof showToast === 'function') showToast('কাস্টম থিম এই অ্যাকাউন্টে উন্মুক্ত নয়, তাই ডিফল্ট থিমে ফেরত আনা হয়েছে');
 }
 
 // ---- The card appended to the end of the theme-picker grid (see js/app.js openThemePicker) ----
