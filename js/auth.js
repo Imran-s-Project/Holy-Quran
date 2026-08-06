@@ -35,9 +35,15 @@ function initAuth(){
       if(typeof recordSessionActivity === 'function') recordSessionActivity(fbUser);
       // ইমেইলের "সব ডিভাইস থেকে লগ-আউট করুন" লিংক থেকে এসে থাকলে সেটা এখানেই সম্পন্ন হয়
       if(typeof runLogoutAllDevicesFlow === 'function') runLogoutAllDevicesFlow(fbUser);
+      // state.user.uid is now set — load this account's own custom theme
+      // (if any) instead of whatever the previous account left applied.
+      if(typeof reloadCustomThemeForCurrentUser === 'function') reloadCustomThemeForCurrentUser();
     } else {
       state.user = null;
       if(typeof stopSessionHeartbeat === 'function') stopSessionHeartbeat();
+      // Back to the device's guest bucket — clears any signed-in account's
+      // custom theme rather than leaving it visible to the next guest/account.
+      if(typeof reloadCustomThemeForCurrentUser === 'function') reloadCustomThemeForCurrentUser();
       refreshCurrentView();
     }
   });
@@ -379,12 +385,50 @@ async function onSignedIn(fbUser){
       if(cloud.bio){ state.user.bio = cloud.bio; }
       if(cloud.favoriteQari){ state.user.favoriteQari = cloud.favoriteQari; }
       if(cloud.favoriteSurah){ state.user.favoriteSurah = cloud.favoriteSurah; }
+      // এডমিন প্যানেল থেকে সেট করা মডারেশন ফিল্ড — নিচে enforceAccountStatus()
+      // এইগুলো পড়ে ব্লক/সীমিত অ্যাকাউন্টের ব্যবস্থা করে।
+      state.user.status = cloud.status || 'active';
+      state.user.statusReason = cloud.statusReason || '';
+      state.user.customThemeGranted = !!cloud.customThemeGranted;
       mergeCloudIntoLocal(cloud.progress || {});
+
+      if(state.user.status === 'blocked'){
+        await enforceBlockedAccount();
+        return; // ব্লক করা হলে বাকি সাইন-ইন ফ্লো (সিঙ্ক পুশ ইত্যাদি) চালানো হবে না
+      }
+      if(state.user.status === 'restricted'){
+        showRestrictedBanner();
+      }
     }
   }catch(e){ console.warn('Cloud fetch failed:', e); }
 
   refreshCurrentView();
   queueCloudSync(true); // push the merged result back up immediately
+}
+
+// এডমিন প্যানেল থেকে "ব্লক" করা অ্যাকাউন্ট — সাথে সাথে সাইন-আউট করে
+// দেওয়া হয় এবং কারণ (যদি থাকে) সহ একটা মেসেজ দেখানো হয়।
+async function enforceBlockedAccount(){
+  const reason = state.user.statusReason;
+  try{ await fbAuth.signOut(); }catch(e){}
+  showToast(
+    reason
+      ? `আপনার অ্যাকাউন্টে প্রবেশাধিকার সাময়িকভাবে বন্ধ করা হয়েছে: ${reason}`
+      : 'আপনার অ্যাকাউন্টে প্রবেশাধিকার সাময়িকভাবে বন্ধ করা হয়েছে। বিস্তারিত জানতে সহায়তার সাথে যোগাযোগ করুন।',
+    'error'
+  );
+}
+
+// এডমিন প্যানেল থেকে "সীমিত" করা অ্যাকাউন্ট — লগইন করতে পারে, শুধু
+// প্রোফাইল টেক্সট (নাম/পদবি/বায়ো) এডিট করতে পারে না। saveProfileChanges()-এ
+// এর জন্য গার্ড আছে; এখানে শুধু একটা নোটিফিকেশন দেখানো হয়।
+function showRestrictedBanner(){
+  showToast(
+    state.user.statusReason
+      ? `আপনার অ্যাকাউন্ট বর্তমানে সীমিত অবস্থায় আছে: ${state.user.statusReason}`
+      : 'আপনার অ্যাকাউন্ট বর্তমানে সীমিত অবস্থায় আছে — প্রোফাইলের নাম/পদবি/বায়ো পরিবর্তন করা যাবে না।',
+    'error'
+  );
 }
 
 // Combines a downloaded Firestore `progress` object into the local `state` +
@@ -1058,7 +1102,9 @@ function openProfileModal(){
       showToast(tr('profile_updated_toast'));
       setTimeout(remove, 550);
     }catch(e){
-      errBox.textContent = tr('profile_save_error');
+      errBox.textContent = (e && typeof e.message === 'string' && e.message.startsWith('restricted:'))
+        ? e.message.slice('restricted:'.length).trim()
+        : tr('profile_save_error');
       btn.disabled = false; label.textContent = tr('profile_save');
     }
   };
@@ -1296,11 +1342,28 @@ function confirmUnlinkProvider(providerId, onDone){
 async function saveProfileChanges({ name, position, avatarColor, avatarIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah }){
   const fbUser = fbAuth.currentUser;
   if(!fbUser) throw new Error('not signed in');
+  // "সীমিত" স্ট্যাটাসের অ্যাকাউন্ট নাম/পদবি/বায়ো পরিবর্তন করতে পারবে না —
+  // এডমিন প্যানেলে এই অ্যাকাউন্টের moderation স্ট্যাটাস restricted করা আছে।
+  if(state.user.status === 'restricted'){
+    const changed = name !== state.user.name || position !== state.user.position || bio !== state.user.bio;
+    if(changed){
+      throw new Error('restricted: প্রোফাইলের নাম/পদবি/বায়ো এখন পরিবর্তন করা যাবে না');
+    }
+  }
+  // Captured before state.user is overwritten below, so we know whether the
+  // still-active stories this account has posted need to be updated too.
+  const profileChangedForStatuses = name !== state.user.name || avatarColor !== state.user.avatarColor || avatarIcon !== state.user.avatarIcon;
+
   if(fbUser.displayName !== name){ await fbUser.updateProfile({ displayName: name }); }
   await fbDb.collection('users').doc(fbUser.uid).set({
     name, position, avatarColor, avatarIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah
   }, { merge: true });
   Object.assign(state.user, { name, position, avatarColor, avatarIcon, phone, district, birthDate, bio, favoriteQari, favoriteSurah });
+  // Fire-and-forget — keeps a rename from blocking the profile-save UX; the
+  // stories themselves are updated shortly after via a background write.
+  if(profileChangedForStatuses && typeof syncOwnStatusesProfile === 'function'){
+    syncOwnStatusesProfile(fbUser.uid, { name, avatarColor, avatarIcon });
+  }
   refreshCurrentView();
 }
 
@@ -1477,6 +1540,12 @@ async function performAccountDeletion(){
 // Errors from either step (e.g. auth/requires-recent-login) propagate to
 // the caller so it can reauthenticate and retry.
 async function deleteAccountEverywhere(fbUser){
+  // Must run first, while still authenticated — the security rules that let
+  // a user delete their own stories no longer apply once the Auth account
+  // below is gone, so this is the only real window to clean them up.
+  if(typeof deleteAllStatusesForUser === 'function'){
+    await deleteAllStatusesForUser(fbUser.uid);
+  }
   try{
     await fbDb.collection('users').doc(fbUser.uid).delete();
   }catch(e){
