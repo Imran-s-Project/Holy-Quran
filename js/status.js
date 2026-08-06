@@ -33,21 +33,53 @@
 //
 // Firestore Rules needed (add alongside the ones already documented in
 // js/firebase-config.js) — public read, owner-only write, but any signed-in
-// user may write ONLY their own key inside `viewers` / `reactions`:
+// user may write ONLY their own key inside `viewers` / `reactions`. Posting
+// is also blocked server-side for accounts an admin has marked
+// restricted/blocked. This is the exact rule block currently deployed
+// (from firestore_rules.txt) — keep this comment in sync if the deployed
+// rules ever change, since postStatusDoc()/submitStatus() above are written
+// to match it field-for-field:
 //
-//   match /statuses/{id} {
+//   match /statuses/{statusId} {
 //     allow read: if true;
+//
 //     allow create: if request.auth != null
-//                    && request.resource.data.uid == request.auth.uid;
+//       && request.resource.data.uid == request.auth.uid
+//       && request.resource.data.keys().hasOnly(
+//         ['uid','name','avatarColor','avatarIcon','type','text','bg',
+//          'surah','ayah','surahName','arabic','translation',
+//          'reciter','reciterName','audioUrl','createdAt','expiresAt',
+//          'viewers','reactions'])
+//       && request.resource.data.type in ['text','ayah']
+//       && request.resource.data.createdAt is number
+//       && request.resource.data.expiresAt is number
+//       && request.resource.data.expiresAt > request.resource.data.createdAt
+//       && request.resource.data.viewers == {}
+//       && request.resource.data.reactions == {}
+//       && !(exists(/databases/$(database)/documents/users/$(request.auth.uid))
+//            && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status in ['restricted', 'blocked']);
+//
 //     allow update: if request.auth != null && (
-//         resource.data.uid == request.auth.uid ||
-//         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers']) &&
-//          request.resource.data.viewers.diff(resource.data.get('viewers', {})).affectedKeys().hasOnly([request.auth.uid])) ||
-//         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions']) &&
-//          request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid]))
+//       resource.data.uid == request.auth.uid ||
+//       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['viewers'])
+//         && request.resource.data.viewers.diff(resource.data.get('viewers', {})).affectedKeys().hasOnly([request.auth.uid])
+//         && request.resource.data.viewers[request.auth.uid].keys().hasOnly(['name','avatarColor','avatarIcon','viewedAt'])) ||
+//       (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['reactions'])
+//         && request.resource.data.reactions.diff(resource.data.get('reactions', {})).affectedKeys().hasOnly([request.auth.uid]))
 //     );
-//     allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+//
+//     allow delete: if request.auth != null && (resource.data.uid == request.auth.uid || isAdmin());
 //   }
+//
+// Two account-lifecycle helpers near the bottom of this file keep stories
+// in sync with the account that owns them, called from js/auth.js:
+//   - deleteAllStatusesForUser(uid) — wipes this account's stories when the
+//     account itself is deleted (allow delete above covers it, since it
+//     runs while still authenticated as that uid).
+//   - syncOwnStatusesProfile(uid, profile) — updates name/avatar on this
+//     account's still-active stories right after a profile rename (allow
+//     update's first branch, resource.data.uid == request.auth.uid, covers
+//     any field on your own docs, not just viewers/reactions).
 
 const STATUS_TOTAL_AYAHS = 6236; // মোট আয়াত সংখ্যা — এলোমেলো আয়াত বাছাইয়ের জন্য
 const STATUS_DURATIONS = [1, 3, 6, 12, 24, 48]; // ঘণ্টা
@@ -351,6 +383,17 @@ function openStatusComposer(){
     if(typeof openAuthFlow === 'function') openAuthFlow('login');
     return;
   }
+  // এডমিন প্যানেল থেকে "সীমিত"/"ব্লক" করা অ্যাকাউন্ট নতুন স্টোরি পোস্ট
+  // করতে পারবে না (Firestore rules-এও একই শর্ত সার্ভার-সাইডে বাধ্যতামূলক)।
+  if(state.user.status === 'restricted' || state.user.status === 'blocked'){
+    showToast(
+      state.user.statusReason
+        ? `আপনার অ্যাকাউন্ট সীমিত অবস্থায় আছে — নতুন স্টোরি পোস্ট করা যাবে না: ${state.user.statusReason}`
+        : 'আপনার অ্যাকাউন্ট সীমিত অবস্থায় আছে — নতুন স্টোরি পোস্ট করা যাবে না।',
+      'error'
+    );
+    return;
+  }
   const el = ensureStatusComposer();
   switchStatusType('text');
   document.getElementById('statusTextInput').value = '';
@@ -368,6 +411,22 @@ function closeStatusComposer(){
 
 async function submitStatus(){
   if(!state.user){ openStatusComposer(); return; }
+  if(state.user.status === 'restricted' || state.user.status === 'blocked'){ openStatusComposer(); return; }
+  // Re-verified against the actual signed-in Firebase user right before the
+  // write (not just the cached state.user object) — the rules require
+  // request.resource.data.uid to match request.auth.uid exactly, so this
+  // catches a stale/expired/remote-logged-out session before it can produce
+  // a confusing permission-denied deep inside postStatusDoc.
+  const fbUser = (typeof fbAuth !== 'undefined' && fbAuth) ? fbAuth.currentUser : null;
+  if(!fbUser || fbUser.uid !== state.user.uid){
+    showToast('সেশন শেষ হয়ে গেছে — আবার সাইন ইন করুন');
+    if(typeof openAuthFlow === 'function') openAuthFlow('login');
+    return;
+  }
+  if(navigator.onLine === false){
+    showToast('ইন্টারনেট সংযোগ নেই — সংযোগ ফিরে এলে আবার চেষ্টা করুন');
+    return;
+  }
   const type = document.getElementById('statusComposer').getAttribute('data-active-type') || 'text';
   const btn = document.getElementById('statusSubmitBtn');
   btn.disabled = true;
@@ -375,7 +434,7 @@ async function submitStatus(){
     if(type === 'text'){
       const text = document.getElementById('statusTextInput').value.trim();
       if(!text){ showToast('কিছু একটা লিখুন'); btn.disabled = false; return; }
-      await postStatusDoc({ type: 'text', text, bg: statusSelectedBg });
+      await postStatusDoc(fbUser, { type: 'text', text, bg: statusSelectedBg });
     } else {
       const surah = +document.getElementById('statusSurahSelect').value;
       const ayahNum = +document.getElementById('statusAyahInput').value;
@@ -387,9 +446,13 @@ async function submitStatus(){
       ]);
       const arJson = await arRes.json();
       const trJson = await trRes.json();
-      if(arJson.code !== 200 || !arJson.data){ throw new Error('invalid ayah'); }
+      // arJson.data.text feeds straight into the `arabic` field below — the
+      // Firestore SDK throws client-side (before even reaching the rules)
+      // if any field is undefined, so this must be verified up front rather
+      // than only checking arJson.code/data.
+      if(arJson.code !== 200 || !arJson.data || !arJson.data.text){ throw new Error('invalid ayah'); }
       const r = reciters.find(x => x.id === reciterId);
-      await postStatusDoc({
+      await postStatusDoc(fbUser, {
         type: 'ayah', surah, ayah: ayahNum,
         surahName: surahNamesBn[surah-1] || (arJson.data.surah && arJson.data.surah.englishName) || '',
         arabic: arJson.data.text,
@@ -401,24 +464,60 @@ async function submitStatus(){
     closeStatusComposer();
     showToast('স্ট্যাটাস পোস্ট করা হয়েছে');
   }catch(e){
-    showToast('স্ট্যাটাস পোস্ট করা যায়নি — আয়াত নম্বর যাচাই করুন বা আবার চেষ্টা করুন');
+    showToast(statusPostErrorMessage(e));
   }
   btn.disabled = false;
 }
 
-async function postStatusDoc(payload){
+// This project has no Firestore offline persistence enabled (js/idb.js is a
+// separate, app-owned IndexedDB store — see its own file header), so a
+// write attempted while offline would otherwise hang the submit button
+// indefinitely instead of failing visibly. Wrapping the write in a timeout
+// guarantees the UI always recovers and tells the user what to do next; the
+// underlying write is harmless to abandon since Firestore will still retry
+// it in the background once connectivity returns.
+const STATUS_TIMEOUT_ERR = { code: 'status/timeout' };
+function withTimeout(promise, ms, timeoutError){
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(timeoutError), ms);
+    promise.then(v => { clearTimeout(t); resolve(v); }, e => { clearTimeout(t); reject(e); });
+  });
+}
+
+// One specific, actionable Bengali message per failure reason instead of a
+// single generic one — matches exactly what firestore_rules.txt actually
+// enforces for the `statuses` collection (see the rule excerpt at the top
+// of this file), so whichever branch rejected the write, the user is told
+// something they can actually act on.
+function statusPostErrorMessage(e){
+  if(e === STATUS_TIMEOUT_ERR) return 'পোস্ট করতে দেরি হচ্ছে — ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন';
+  const code = e && e.code;
+  if(code === 'permission-denied'){
+    return (state.user && (state.user.status === 'restricted' || state.user.status === 'blocked'))
+      ? 'আপনার অ্যাকাউন্ট সীমিত অবস্থায় আছে — নতুন স্টোরি পোস্ট করা যাবে না।'
+      : 'পোস্ট করার অনুমতি নেই — আবার সাইন ইন করে চেষ্টা করুন';
+  }
+  if(code === 'unavailable') return 'সার্ভারের সাথে সংযোগ করা যায়নি — ইন্টারনেট সংযোগ পরীক্ষা করুন';
+  if(e && e.message === 'invalid ayah') return 'এই আয়াত নম্বরটি সঠিক নয় — যাচাই করে আবার চেষ্টা করুন';
+  return 'স্ট্যাটাস পোস্ট করা যায়নি — আয়াত নম্বর যাচাই করুন বা আবার চেষ্টা করুন';
+}
+
+async function postStatusDoc(fbUser, payload){
   const now = Date.now();
   const doc = Object.assign({
-    uid: state.user.uid,
+    // uid comes from the live Firebase user object passed in by
+    // submitStatus, not state.user — guarantees an exact match with
+    // request.auth.uid under the Firestore rule, every single time.
+    uid: fbUser.uid,
     name: state.user.name || 'ব্যবহারকারী',
     avatarColor: state.user.avatarColor || '',
-    avatarIcon: (state.user.avatarIcon || ''),
+    avatarIcon: state.user.avatarIcon || '',
     createdAt: now,
     expiresAt: now + statusSelectedDuration * 3600 * 1000,
     viewers: {},
     reactions: {}
   }, payload);
-  await fbDb.collection('statuses').add(doc);
+  await withTimeout(fbDb.collection('statuses').add(doc), 20000, STATUS_TIMEOUT_ERR);
 }
 
 // ================= Story viewer =================
@@ -753,4 +852,52 @@ async function deleteCurrentStatus(){
     if(statusSlideIdx >= group.items.length) statusSlideIdx = group.items.length - 1;
     renderStatusSlide();
   }catch(e){ showToast('মুছে ফেলা যায়নি, আবার চেষ্টা করুন'); }
+}
+
+// ================= Account-lifecycle hooks (called from js/auth.js) =================
+
+// Deletes every status document owned by this uid. Called right before the
+// Firebase Auth account itself is removed (js/auth.js:deleteAccountEverywhere),
+// while the user is still authenticated — Firestore rules only allow a user
+// to delete their own status docs, so this is the only window to clean them
+// up. Without this, a deleted account's stories kept showing to everyone
+// else until they naturally expired.
+async function deleteAllStatusesForUser(uid){
+  if(!uid || typeof fbDb === 'undefined' || !fbDb) return;
+  try{
+    const snap = await fbDb.collection('statuses').where('uid', '==', uid).get();
+    if(snap.empty) return;
+    const batch = fbDb.batch();
+    snap.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  }catch(e){ console.warn('স্ট্যাটাস ক্লিনআপ ব্যর্থ:', e); }
+}
+
+// The name/avatar on a status doc is a snapshot taken at post time (same
+// denormalized pattern used for reactions/viewers). That's fine until the
+// poster renames themselves — their still-active stories would otherwise
+// keep showing the old name until they expire. Called from
+// js/auth.js:saveProfileChanges() whenever name/avatarColor/avatarIcon
+// actually changed, so currently-live stories immediately reflect it.
+// Already-expired stories and historical reaction/viewer entries are left
+// alone — this only touches what's still visible right now.
+async function syncOwnStatusesProfile(uid, profile){
+  if(!uid || typeof fbDb === 'undefined' || !fbDb) return;
+  try{
+    const now = Date.now();
+    const snap = await fbDb.collection('statuses').where('uid', '==', uid).get();
+    const batch = fbDb.batch();
+    let any = false;
+    snap.docs.forEach(d => {
+      const data = d.data();
+      if((data.expiresAt || 0) <= now) return; // already expired, leave it be
+      batch.update(d.ref, {
+        name: profile.name || 'ব্যবহারকারী',
+        avatarColor: profile.avatarColor || '',
+        avatarIcon: profile.avatarIcon || ''
+      });
+      any = true;
+    });
+    if(any) await batch.commit();
+  }catch(e){ console.warn('স্ট্যাটাস প্রোফাইল সিঙ্ক ব্যর্থ:', e); }
 }
