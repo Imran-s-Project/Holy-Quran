@@ -56,6 +56,8 @@
   background:var(--sage);border:1px solid var(--gold-soft);border-radius:8px;padding:8px 4px;
   letter-spacing:1px;
 }
+.mfa-backup-actions{display:flex;gap:8px;margin:0 0 14px;}
+.mfa-backup-actions button{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;}
 .mfa-backup-warn{
   font-size:12.5px;color:#C0392B;background:rgba(192,57,43,.08);
   border:1px solid rgba(192,57,43,.25);border-radius:10px;padding:8px 10px;margin-bottom:6px;
