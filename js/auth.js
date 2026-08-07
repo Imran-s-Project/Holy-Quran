@@ -30,14 +30,21 @@ function initAuth(){
 
   authUnsub = fbAuth.onAuthStateChanged(async (fbUser) => {
     if(fbUser){
-      await onSignedIn(fbUser);
-      // লগইন হিস্টোরি রেকর্ড + ডিভাইস শনাক্তকরণ + দূর থেকে লগ-আউট শোনা (js/session-security.js)
-      if(typeof recordSessionActivity === 'function') recordSessionActivity(fbUser);
-      // ইমেইলের "সব ডিভাইস থেকে লগ-আউট করুন" লিংক থেকে এসে থাকলে সেটা এখানেই সম্পন্ন হয়
-      if(typeof runLogoutAllDevicesFlow === 'function') runLogoutAllDevicesFlow(fbUser);
-      // state.user.uid is now set — load this account's own custom theme
-      // (if any) instead of whatever the previous account left applied.
-      if(typeof reloadCustomThemeForCurrentUser === 'function') reloadCustomThemeForCurrentUser();
+      const finishSignIn = async () => {
+        await onSignedIn(fbUser);
+        // লগইন হিস্টোরি রেকর্ড + ডিভাইস শনাক্তকরণ + দূর থেকে লগ-আউট শোনা (js/session-security.js)
+        if(typeof recordSessionActivity === 'function') recordSessionActivity(fbUser);
+        // ইমেইলের "সব ডিভাইস থেকে লগ-আউট করুন" লিংক থেকে এসে থাকলে সেটা এখানেই সম্পন্ন হয়
+        if(typeof runLogoutAllDevicesFlow === 'function') runLogoutAllDevicesFlow(fbUser);
+        // state.user.uid is now set — load this account's own custom theme
+        // (if any) instead of whatever the previous account left applied.
+        if(typeof reloadCustomThemeForCurrentUser === 'function') reloadCustomThemeForCurrentUser();
+      };
+      // অ্যাকাউন্টে টু-ফ্যাক্টর অথেনটিকেশন চালু থাকলে (js/mfa.js), এখানেই আগে
+      // চ্যালেঞ্জ দেখানো হয় — পাস না করা পর্যন্ত state.user সেট হয় না, তাই বাকি
+      // অ্যাপ এখনো "সাইন-আউট" অবস্থাতেই দেখায়।
+      if(typeof requireMfaIfNeeded === 'function') requireMfaIfNeeded(fbUser, finishSignIn);
+      else await finishSignIn();
     } else {
       state.user = null;
       if(typeof stopSessionHeartbeat === 'function') stopSessionHeartbeat();
@@ -390,6 +397,7 @@ async function onSignedIn(fbUser){
       state.user.status = cloud.status || 'active';
       state.user.statusReason = cloud.statusReason || '';
       state.user.customThemeGranted = !!cloud.customThemeGranted;
+      state.user.mfa = cloud.mfa || null; // টু-ফ্যাক্টর অথেনটিকেশন অবস্থা (js/mfa.js)
       mergeCloudIntoLocal(cloud.progress || {});
 
       if(state.user.status === 'blocked'){
@@ -939,6 +947,7 @@ function openProfileModal(){
         <div class="section-title-sm">${tr('profile_security_title')}</div>
         <div class="profile-actions">
           ${isPasswordUser ? `<button class="settings-btn profile-action-btn" id="profChangePass"><i class="fa-solid fa-key"></i><span>${tr('profile_change_password')}</span></button>` : ''}
+          <button class="settings-btn profile-action-btn" id="profMfaBtn"><i class="fa-solid fa-shield-halved"></i><span>টু-ফ্যাক্টর অথেনটিকেশন</span>${user.mfa && user.mfa.enabled ? '<span class="mfa-status-pill is-on" style="margin-left:auto;"><i class="fa-solid fa-check"></i></span>' : ''}</button>
           <button class="settings-btn profile-action-btn" id="profLoginHistoryBtn"><i class="fa-solid fa-clock-rotate-left"></i><span>${tr('profile_login_history')}</span></button>
           <button class="settings-btn profile-action-btn" id="profLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i><span>${tr('profile_logout')}</span></button>
         </div>
@@ -1114,6 +1123,9 @@ function openProfileModal(){
 
   const changePassBtn = document.getElementById('profChangePass');
   if(changePassBtn) changePassBtn.onclick = () => { remove(); confirmPasswordChange(user); };
+
+  const mfaBtn = document.getElementById('profMfaBtn');
+  if(mfaBtn) mfaBtn.onclick = () => { if(typeof openMfaSettingsModal === 'function') openMfaSettingsModal(user); };
 
   const uidCopyBtn = document.getElementById('profUidCopy');
   if(uidCopyBtn) uidCopyBtn.onclick = () => copyProfileValue(user.uid, uidCopyBtn);
