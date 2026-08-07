@@ -359,10 +359,13 @@ function showBackupCodesModal(codes, onDone){
     <div class="app-modal-box input-box-modal">
       <div class="app-modal-head"><h3>ব্যাকআপ কোড সংরক্ষণ করুন</h3></div>
       <div class="app-modal-body">
-        <div class="mfa-backup-warn"><i class="fa-solid fa-triangle-exclamation"></i> এই কোডগুলো শুধু একবারই দেখানো হবে। অথেনটিকেটর অ্যাপ হারিয়ে গেলে এগুলো দিয়ে সাইন-ইন করা যাবে — নিরাপদ জায়গায় লিখে রাখুন।</div>
+        <div class="mfa-backup-warn"><i class="fa-solid fa-triangle-exclamation"></i> এই কোডগুলো শুধু একবারই দেখানো হবে। অথেনটিকেটর অ্যাপ হারিয়ে গেলে এগুলো দিয়ে সাইন-ইন করা যাবে — নিরাপদ জায়গায় রাখুন।</div>
         <div class="mfa-backup-grid">${codes.map(c => `<div class="mfa-backup-code">${escapeHtml(c)}</div>`).join('')}</div>
-        <button type="button" class="mfa-copy-key-btn" id="mfaCopyAllBackup" style="display:block;margin:0 auto 12px;">সবগুলো কপি করুন</button>
-        <label class="mfa-trust-row"><input type="checkbox" id="mfaBackupSavedCheck"> আমি কোডগুলো সংরক্ষণ করেছি</label>
+        <div class="mfa-backup-actions">
+          <button type="button" class="tw-cancel-btn" id="mfaCopyAllBackup"><i class="fa-solid fa-copy"></i> কপি করুন</button>
+          <button type="button" class="tw-cancel-btn" id="mfaDownloadBackup"><i class="fa-solid fa-download"></i> ডাউনলোড করুন</button>
+        </div>
+        <label class="mfa-trust-row"><input type="checkbox" id="mfaBackupSavedCheck"> আমি কোডগুলো সংরক্ষণ/ডাউনলোড করেছি</label>
         <div class="input-box-actions">
           <button class="tw-save-btn" id="mfaBackupDone" disabled>সম্পন্ন করুন</button>
         </div>
@@ -373,10 +376,45 @@ function showBackupCodesModal(codes, onDone){
   document.getElementById('mfaCopyAllBackup').onclick = () => {
     navigator.clipboard.writeText(codes.join('\n')).then(() => showToast('কোডগুলো কপি হয়েছে')).catch(() => {});
   };
+
+  document.getElementById('mfaDownloadBackup').onclick = () => {
+    downloadBackupCodesFile(codes);
+    showToast('ফাইল ডাউনলোড হয়েছে');
+  };
+
   const check = document.getElementById('mfaBackupSavedCheck');
   const doneBtn = document.getElementById('mfaBackupDone');
   check.onchange = () => { doneBtn.disabled = !check.checked; };
   doneBtn.onclick = () => { wrap.remove(); onDone(); };
+}
+
+// ব্যাকআপ কোডগুলো একটি .txt ফাইলে সাজিয়ে সরাসরি ডিভাইসে ডাউনলোড করে দেয় —
+// সম্পূর্ণ ক্লায়েন্ট-সাইড (Blob + object URL), কোনো সার্ভার কল ছাড়াই।
+function downloadBackupCodesFile(codes){
+  const dateStr = new Date().toLocaleDateString('bn-BD', { year: 'numeric', month: 'long', day: 'numeric' });
+  const email = (state.user && state.user.email) || '';
+  const lines = ['আল-কুরআন — টু-ফ্যাক্টর অথেনটিকেশন ব্যাকআপ কোড'];
+  if(email) lines.push(`অ্যাকাউন্ট: ${email}`);
+  lines.push(
+    `তৈরি হয়েছে: ${dateStr}`,
+    '',
+    'প্রতিটি কোড শুধু একবার ব্যবহার করা যাবে। অথেনটিকেটর অ্যাপ হারিয়ে গেলে',
+    'সাইন-ইন করার সময় এখান থেকে একটি কোড দিন। এই ফাইলটি নিরাপদ জায়গায় রাখুন —',
+    'অন্য কারো হাতে পড়লে সে আপনার অ্যাকাউন্টে ঢুকতে পারবে।',
+    '',
+    ...codes,
+    ''
+  );
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'al-quran-backup-codes.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function regenerateBackupCodes(user){
