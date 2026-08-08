@@ -483,11 +483,11 @@ async function openSessionHistoryModal(){
         // গুঁতিয়ে না থেকে।
         const chips = [
           { icon: 'fa-solid fa-location-dot', label: 'লোকেশন', value: (flag ? flag + ' ' : '') + (locationText || 'শনাক্ত করা যায়নি') },
-          { icon: 'fa-solid fa-tower-broadcast', label: 'ISP', value: d.isp },
-          { icon: 'fa-solid fa-network-wired', label: 'IP ঠিকানা', value: d.ip },
+          { icon: 'fa-solid fa-tower-broadcast', label: 'ইন্টারনেট সেবাদাতা', value: d.isp },
+          { icon: 'fa-solid fa-network-wired', label: 'আইপি ঠিকানা', value: d.ip },
           { icon: 'fa-solid fa-key', label: 'লগইন পদ্ধতি', value: d.loginMethod },
           { icon: 'fa-solid fa-signal', label: 'সংযোগ', value: d.connectionLabel },
-          { icon: 'fa-solid fa-clock', label: 'টাইমজোন', value: d.timezone },
+          { icon: 'fa-solid fa-clock', label: 'সময় অঞ্চল', value: d.timezone },
           { icon: 'fa-solid fa-calendar-plus', label: 'প্রথম প্রবেশ', value: createdAt ? formatLoginTimeBn(createdAt) : '' },
           { icon: 'fa-solid fa-hourglass-half', label: 'স্থিতিকাল', value: durText }
         ].filter(c => c.value);
@@ -504,7 +504,7 @@ async function openSessionHistoryModal(){
         const mapsLink = (typeof d.lat === 'number' && typeof d.lon === 'number')
           ? `<a href="https://www.google.com/maps?q=${d.lat},${d.lon}" target="_blank" rel="noopener" class="session-map-link"><i class="fa-solid fa-location-dot"></i> মানচিত্রে দেখুন</a>` : '';
         const emailTag = (d.emailSent === false)
-          ? '<span class="session-badge session-badge-muted" title="একই IP থেকে আগেও লগইন হয়েছে বলে এবার নতুন করে সতর্কতা-ইমেইল পাঠানো হয়নি"><i class="fa-solid fa-envelope-circle-check"></i> ইমেইল পাঠানো হয়নি (পরিচিত IP)</span>' : '';
+          ? '<span class="session-badge session-badge-muted" title="একই আইপি থেকে আগেও লগইন হয়েছে বলে এবার নতুন করে সতর্কতা-ইমেইল পাঠানো হয়নি"><i class="fa-solid fa-envelope-circle-check"></i> ইমেইল পাঠানো হয়নি (পরিচিত আইপি)</span>' : '';
 
         return `
         <div class="session-item${isCurrent ? ' session-item-current' : ''}" data-session-id="${escapeHtml(doc.id)}">
