@@ -515,6 +515,7 @@ async function openSessionHistoryModal(){
                 <span class="session-item-title">${escapeHtml(d.browser || 'অজানা ব্রাউজার')} · ${escapeHtml(d.os || 'অজানা সিস্টেম')}</span>
                 ${isCurrent ? '<span class="session-badge session-badge-current">এই ডিভাইস</span>' : ''}
                 ${d.isNewDevice && !isCurrent ? '<span class="session-badge session-badge-new">🆕 নতুন ডিভাইস</span>' : ''}
+                ${d.mfaVerified ? '<span class="session-badge session-badge-mfa"><i class="fa-solid fa-shield-halved"></i> 2FA যাচাইকৃত</span>' : ''}
               </div>
               <div class="session-item-status-row">
                 <span class="session-device-badge"><i class="${escapeHtml(d.deviceIcon || 'fa-solid fa-desktop')}"></i> ${escapeHtml(d.deviceLabel || '')}</span>
