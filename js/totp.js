@@ -146,15 +146,22 @@ function canonicalizeBackupCode(text){
 // The `qrcode` library is loaded lazily (only when 2FA setup is actually
 // opened, not on every app load) and with several CDN fallbacks — one CDN
 // being blocked/slow/regionally unreachable no longer means "no QR ever".
+//
+// cdnjs.cloudflare.com is tried FIRST on purpose: it's the only one of the
+// three that sw.js actually caches (see the fetch handler there), so once
+// it has loaded successfully one time, every future 2FA setup — even fully
+// offline — gets the QR instantly from the service-worker cache instead of
+// hitting the network again. jsdelivr/unpkg stay as pure-network fallbacks
+// for the rare case cdnjs itself is unreachable.
 const QR_LIB_CDN_URLS = [
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js',
   'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
-  'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
-  'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js'
+  'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js'
 ];
 
 let qrLibLoadPromise = null;
 
-function loadScriptOnce(url, timeoutMs = 6000){
+function loadScriptOnce(url, timeoutMs = 4000){
   return new Promise((resolve) => {
     const s = document.createElement('script');
     s.src = url;
