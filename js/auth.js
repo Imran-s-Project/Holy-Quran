@@ -947,7 +947,7 @@ function openProfileModal(){
         <div class="section-title-sm">${tr('profile_security_title')}</div>
         <div class="profile-actions">
           ${isPasswordUser ? `<button class="settings-btn profile-action-btn" id="profChangePass"><i class="fa-solid fa-key"></i><span>${tr('profile_change_password')}</span></button>` : ''}
-          <button class="settings-btn profile-action-btn" id="profMfaBtn"><i class="fa-solid fa-shield-halved"></i><span>টু-ফ্যাক্টর অথেনটিকেশন</span>${user.mfa && user.mfa.enabled ? '<span class="mfa-status-pill is-on" style="margin-left:auto;"><i class="fa-solid fa-check"></i></span>' : ''}</button>
+          <button class="settings-btn profile-action-btn" id="profMfaBtn"><i class="fa-solid fa-shield-halved"></i><span>টু-ফ্যাক্টর অথেনটিকেশন</span>${user.mfa && user.mfa.enabled ? `<span class="mfa-status-pill is-on" style="margin-left:auto;"><i class="fa-solid fa-check"></i></span>${(user.mfa.method === 'totp' && (user.mfa.backupCodeHashes || []).length <= 2) ? '<span class="mfa-low-dot" title="ব্যাকআপ কোড কমে গেছে"></span>' : ''}` : ''}</button>
           <button class="settings-btn profile-action-btn" id="profLoginHistoryBtn"><i class="fa-solid fa-clock-rotate-left"></i><span>${tr('profile_login_history')}</span></button>
           <button class="settings-btn profile-action-btn" id="profLogoutBtn"><i class="fa-solid fa-right-from-bracket"></i><span>${tr('profile_logout')}</span></button>
         </div>
