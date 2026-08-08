@@ -25,6 +25,13 @@ service cloud.firestore {
         allow read, write: if request.auth != null && request.auth.uid == uid;
         allow read, delete: if isAdmin();
       }
+
+      // টু-ফ্যাক্টর অথেনটিকেশনে "৩০ দিন এই ডিভাইসকে মনে রাখুন" — কোন ডিভাইস
+      // বিশ্বস্ত তার রেকর্ড, যাতে প্রোফাইল থেকে যেকোনো ডিভাইসের বিশ্বস্ততা
+      // দূর থেকে বাতিল করা যায় (js/mfa.js)।
+      match /trustedDevices/{deviceId} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
     }
 
     match /push_subscriptions/{deviceId} {
