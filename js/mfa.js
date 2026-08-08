@@ -18,15 +18,45 @@ const MFA_ISSUER = 'আল-কুরআন';
 
 function mfaTrustKey(uid){ return MFA_TRUST_PREFIX + uid; }
 function mfaVerifiedKey(uid){ return MFA_VERIFIED_PREFIX + uid; }
+function trustedDeviceDocRef(uid, deviceId){
+  return fbDb.collection('users').doc(uid).collection('trustedDevices').doc(deviceId);
+}
 
-function isDeviceTrustedForMfa(uid){
+// লোকাল ক্যাশ (দ্রুত, অফলাইনেও কাজ করে) — কিন্তু চূড়ান্ত সিদ্ধান্ত সবসময়
+// Firestore-এর `trustedDevices/{deviceId}` ডকুমেন্ট, যাতে প্রোফাইল থেকে অন্য
+// কোনো ডিভাইসের বিশ্বস্ততা দূর থেকে বাতিল করা গেলে সেটা কার্যকর হয়।
+async function isDeviceTrustedForMfa(uid){
+  let localOk = false;
   try{
     const raw = localStorage.getItem(mfaTrustKey(uid));
-    return !!raw && Date.now() < parseInt(raw, 10);
-  }catch(e){ return false; }
+    localOk = !!raw && Date.now() < parseInt(raw, 10);
+  }catch(e){}
+  if(!localOk) return false;
+
+  const deviceId = (typeof getDeviceId === 'function') ? getDeviceId() : null;
+  if(!deviceId) return true;
+  try{
+    const doc = await trustedDeviceDocRef(uid, deviceId).get();
+    if(!doc.exists) return true; // পুরনো ট্রাস্ট (এই ফিচার আসার আগে সেট হওয়া) — honor করা হলো
+    if(doc.data().revoked){ clearMfaDeviceTrust(uid); return false; }
+    return true;
+  }catch(e){ return localOk; } // অফলাইন — লোকাল ক্যাশই ভরসা
 }
-function trustThisDeviceForMfa(uid){
-  try{ localStorage.setItem(mfaTrustKey(uid), String(Date.now() + MFA_TRUST_DAYS * 86400000)); }catch(e){}
+
+async function trustThisDeviceForMfa(uid){
+  const expiresAt = Date.now() + MFA_TRUST_DAYS * 86400000;
+  try{ localStorage.setItem(mfaTrustKey(uid), String(expiresAt)); }catch(e){}
+  try{
+    const deviceId = (typeof getDeviceId === 'function') ? getDeviceId() : null;
+    if(!deviceId) return;
+    const info = (typeof parseDeviceInfo === 'function') ? parseDeviceInfo() : {};
+    await trustedDeviceDocRef(uid, deviceId).set({
+      deviceId,
+      browser: info.browser || '', os: info.os || '', deviceLabel: info.deviceLabel || '',
+      trustedAt: firebase.firestore.FieldValue.serverTimestamp(),
+      expiresAt, revoked: false
+    }, { merge: true });
+  }catch(e){}
 }
 function clearMfaDeviceTrust(uid){
   try{ localStorage.removeItem(mfaTrustKey(uid)); }catch(e){}
@@ -36,6 +66,42 @@ function isMfaVerifiedThisSession(uid){
 }
 function markMfaVerifiedThisSession(uid){
   try{ sessionStorage.setItem(mfaVerifiedKey(uid), '1'); }catch(e){}
+}
+
+// লগইন-হিস্টোরি মোডালে এই সেশনের পাশে "2FA যাচাইকৃত" ব্যাজ দেখানোর জন্য
+// js/session-security.js-এর তৈরি করা সেশন-ডকেই একটা ফ্ল্যাগ বসিয়ে দেয়।
+async function markCurrentSessionMfaVerified(uid){
+  try{
+    if(typeof getOrCreateTabSessionId !== 'function') return;
+    const tabSessionId = getOrCreateTabSessionId();
+    await fbDb.collection('users').doc(uid).collection('sessions').doc(tabSessionId)
+      .set({ mfaVerified: true }, { merge: true });
+  }catch(e){}
+}
+
+// "এই ডিভাইসকে মনে রাখুন" চালু হলে সেটা জানিয়ে একটা ইমেইল পাঠায় (নতুন-লগইন
+// অ্যালার্টের একই EmailJS টেমপ্লেট পুনর্ব্যবহার করে) — কেউ কোড হাতিয়ে নিয়ে
+// একটা ডিভাইসকে দীর্ঘমেয়াদী বিশ্বস্ত বানিয়ে ফেললে ব্যবহারকারী টের পাবেন।
+async function sendMfaDeviceTrustedEmail(fbUser){
+  try{
+    if(typeof isLoginAlertEmailConfigured !== 'function' || !isLoginAlertEmailConfigured()) return;
+    if(typeof ensureEmailJsReady !== 'function' || !ensureEmailJsReady()) return;
+    const email = fbUser.email; if(!email) return;
+    const info = (typeof parseDeviceInfo === 'function') ? parseDeviceInfo() : {};
+    const loc = (typeof fetchIpLocation === 'function') ? await fetchIpLocation() : {};
+    const revokeUrl = window.location.origin + window.location.pathname + '?action=logoutAllDevices';
+    await emailjs.send(EMAILJS_CONFIG.serviceId, EMAILJS_CONFIG.loginAlertTemplateId, {
+      to_email: email,
+      to_name: fbUser.displayName || email.split('@')[0],
+      device_text: `${info.browser || ''} · ${info.os || ''} · ${info.deviceLabel || ''}`,
+      location_text: [loc.city, loc.country].filter(Boolean).join(', ') || 'শনাক্ত করা যায়নি',
+      isp_text: loc.isp || 'শনাক্ত করা যায়নি',
+      ip_text: loc.ip || 'শনাক্ত করা যায়নি',
+      login_time: (typeof formatLoginTimeBn === 'function') ? formatLoginTimeBn(new Date()) : new Date().toLocaleString(),
+      new_device_text: `উল্লেখ্য: টু-ফ্যাক্টর যাচাইয়ের সময় এই ডিভাইসটিকে ৩০ দিনের জন্য বিশ্বস্ত হিসেবে চিহ্নিত করা হয়েছে — এই সময়ে এই ডিভাইস থেকে আর কোড ছাড়াই ঢোকা যাবে। এটি আপনি না করলে এখনই সব ডিভাইস থেকে লগ-আউট করুন।`,
+      revoke_url: revokeUrl
+    });
+  }catch(e){ console.warn('2FA ডিভাইস-ট্রাস্ট অ্যালার্ট ইমেইল ব্যর্থ:', e); }
 }
 
 async function fetchMfaConfig(uid){
@@ -54,7 +120,8 @@ function bnCount(n){ return typeof toBn === 'function' ? toBn(n) : String(n); }
 // ব্যবহারকারী বাতিল করলে আবার সাইন-আউট করে দেওয়া হয়।
 async function requireMfaIfNeeded(fbUser, next){
   const uid = fbUser.uid;
-  if(isDeviceTrustedForMfa(uid) || isMfaVerifiedThisSession(uid)){ next(); return; }
+  const trusted = await isDeviceTrustedForMfa(uid);
+  if(trusted || isMfaVerifiedThisSession(uid)){ next(); return; }
 
   const cfg = await fetchMfaConfig(uid);
   if(!cfg || !cfg.enabled){ next(); return; }
@@ -64,7 +131,11 @@ async function requireMfaIfNeeded(fbUser, next){
     name: fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : ''),
     onVerified: (trustDevice) => {
       markMfaVerifiedThisSession(uid);
-      if(trustDevice) trustThisDeviceForMfa(uid);
+      markCurrentSessionMfaVerified(uid);
+      if(trustDevice){
+        trustThisDeviceForMfa(uid);
+        sendMfaDeviceTrustedEmail(fbUser);
+      }
       next();
     },
     onCancel: async () => {
@@ -249,33 +320,102 @@ function renderMfaSettingsBody(user, closeParentModal){
   const methodLabel = cfg.method === 'totp' ? 'অথেনটিকেটর অ্যাপ' : 'ইমেইল কোড';
   const methodIcon = cfg.method === 'totp' ? 'fa-mobile-screen-button' : 'fa-envelope';
   const backupCount = (cfg.backupCodeHashes || []).length;
+  const backupLow = cfg.method === 'totp' && backupCount <= 2;
   body.innerHTML = `
     <div class="mfa-method-card" style="cursor:default;">
       <span class="mfa-method-icon"><i class="fa-solid ${methodIcon}"></i></span>
       <span class="mfa-method-body">
         <span class="mfa-method-title">চালু আছে — ${methodLabel}</span>
-        <span class="mfa-method-desc">${cfg.method === 'totp' ? `${bnCount(backupCount)}টি ব্যাকআপ কোড অবশিষ্ট আছে।` : 'প্রতিবার সাইন-ইনে ইমেইলে কোড পাঠানো হবে।'}</span>
+        <span class="mfa-method-desc${backupLow ? ' mfa-low-text' : ''}">${cfg.method === 'totp' ? `${bnCount(backupCount)}টি ব্যাকআপ কোড অবশিষ্ট আছে${backupLow ? ' — কমে গেছে, নতুন কোড জেনারেট করে নিন' : ''}।` : 'প্রতিবার সাইন-ইনে ইমেইলে কোড পাঠানো হবে।'}</span>
       </span>
       <span class="mfa-status-pill is-on"><i class="fa-solid fa-check"></i> চালু</span>
     </div>
     <div class="input-box-actions" style="margin-top:14px;flex-wrap:wrap;">
-      ${cfg.method === 'totp' ? `<button class="tw-cancel-btn" id="mfaRegenBackup">নতুন ব্যাকআপ কোড</button>` : ''}
+      ${cfg.method === 'totp' ? `<button class="tw-cancel-btn${backupLow ? ' mfa-regen-urge' : ''}" id="mfaRegenBackup">নতুন ব্যাকআপ কোড</button>` : ''}
       <button class="tw-cancel-btn profile-delete-confirm-btn" id="mfaDisableBtn">বন্ধ করুন</button>
     </div>`;
   const regenBtn = document.getElementById('mfaRegenBackup');
   if(regenBtn) regenBtn.onclick = () => regenerateBackupCodes(user);
   document.getElementById('mfaDisableBtn').onclick = () => confirmDisableMfa(user, closeParentModal);
+
+  appendTrustedDevicesSection(user);
+}
+
+// ---------- বিশ্বস্ত ডিভাইসসমূহ (৩০ দিনের 2FA-বাইপাস) — দেখা ও দূর থেকে বাতিল ----------
+async function loadTrustedDevices(uid){
+  try{
+    const snap = await fbDb.collection('users').doc(uid).collection('trustedDevices')
+      .where('revoked', '==', false).get();
+    return snap.docs.map(d => d.data())
+      .filter(d => (d.expiresAt || 0) > Date.now())
+      .sort((a, b) => (b.expiresAt || 0) - (a.expiresAt || 0));
+  }catch(e){ return []; }
+}
+
+async function appendTrustedDevicesSection(user){
+  const body = document.getElementById('mfaSetBody');
+  if(!body) return;
+  const old = document.getElementById('mfaTrustedDevicesSection');
+  if(old) old.remove();
+
+  const holder = document.createElement('div');
+  holder.id = 'mfaTrustedDevicesSection';
+  body.appendChild(holder);
+
+  const devices = await loadTrustedDevices(user.uid);
+  if(!document.getElementById('mfaSetBody') || !document.body.contains(holder)) return; // ততক্ষণে মোডাল বন্ধ হয়ে গেলে
+  if(!devices.length) return;
+
+  const currentDeviceId = (typeof getDeviceId === 'function') ? getDeviceId() : null;
+  holder.innerHTML = `
+    <div class="mfa-trusted-title">বিশ্বস্ত ডিভাইসসমূহ — ৩০ দিন কোড ছাড়াই প্রবেশ করা যাবে</div>
+    <div class="mfa-trusted-list">
+      ${devices.map(d => `
+        <div class="mfa-trusted-row">
+          <span class="mfa-trusted-info">
+            <i class="fa-solid fa-mobile-screen"></i>
+            <span>${escapeHtml(d.deviceLabel || d.os || 'ডিভাইস')} · ${escapeHtml(d.browser || '')}${d.deviceId === currentDeviceId ? ' <span class="mfa-trusted-you">(এই ডিভাইস)</span>' : ''}</span>
+          </span>
+          <button type="button" class="mfa-trusted-revoke" data-revoke="${escapeHtml(d.deviceId)}" title="বিশ্বস্ততা বাতিল করুন"><i class="fa-solid fa-xmark"></i></button>
+        </div>`).join('')}
+    </div>`;
+
+  holder.querySelectorAll('[data-revoke]').forEach(btn => {
+    btn.onclick = async () => {
+      const deviceId = btn.getAttribute('data-revoke');
+      btn.disabled = true;
+      try{
+        await trustedDeviceDocRef(user.uid, deviceId).set({ revoked: true }, { merge: true });
+        if(deviceId === currentDeviceId) clearMfaDeviceTrust(user.uid);
+        showToast('ডিভাইসের বিশ্বস্ততা বাতিল হয়েছে');
+        const row = btn.closest('.mfa-trusted-row');
+        if(row) row.remove();
+      }catch(e){ showToast('বাতিল করা যায়নি, আবার চেষ্টা করুন'); btn.disabled = false; }
+    };
+  });
+}
+
+async function revokeAllTrustedDevices(uid){
+  try{
+    const snap = await fbDb.collection('users').doc(uid).collection('trustedDevices').get();
+    if(snap.empty) return;
+    const batch = fbDb.batch();
+    snap.docs.forEach(d => batch.update(d.ref, { revoked: true }));
+    await batch.commit();
+  }catch(e){}
 }
 
 async function startTotpSetup(user, closeParentModal){
   const secret = generateTotpSecret();
   const uri = buildOtpauthUri(secret, user.email || user.name || 'ব্যবহারকারী', MFA_ISSUER);
 
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
   const body = document.getElementById('mfaSetBody');
   if(!body) return;
   body.innerHTML = `
     <p style="margin:0 0 10px;color:var(--ink-soft);font-size:13.5px;">অথেনটিকেটর অ্যাপ দিয়ে নিচের QR কোডটি স্ক্যান করুন —</p>
     <div class="mfa-qr-box"><canvas id="mfaQrCanvas" width="200" height="200"></canvas></div>
+    ${isMobile ? `<a href="${uri}" class="mfa-toggle-link" style="display:block;text-align:center;">📱 অথবা সরাসরি অথেনটিকেটর অ্যাপে খুলুন</a>` : ''}
     <p style="margin:8px 0 6px;color:var(--ink-soft);font-size:12px;text-align:center;">অথবা এই কোডটি হাতে টাইপ করুন —</p>
     <div class="mfa-secret-key" id="mfaSecretKeyDisplay">${formatSecretForDisplay(secret)}</div>
     <div style="text-align:center;"><button type="button" class="mfa-copy-key-btn" id="mfaCopySecret">কপি করুন</button></div>
@@ -471,6 +611,7 @@ function confirmDisableMfa(user, closeParentModal){
           }, { merge: true });
           user.mfa = { enabled: false };
           clearMfaDeviceTrust(user.uid);
+          revokeAllTrustedDevices(user.uid); // fire-and-forget cleanup
           showToast('টু-ফ্যাক্টর অথেনটিকেশন বন্ধ হয়েছে');
           renderMfaSettingsBody(user, closeParentModal);
         }catch(e){ showToast('বন্ধ করা যায়নি, আবার চেষ্টা করুন'); }
