@@ -48,6 +48,7 @@
 }
 .session-badge-current{ background: rgba(46,158,91,.15); color: #227A47; }
 .session-badge-new{ background: rgba(243,201,105,.22); color: #8A6D1F; }
+.session-badge-mfa{ background: rgba(14,59,54,.12); color: var(--teal); }
 .session-badge-muted{
   font-size: 10px; color: var(--ink-soft); background: transparent;
   border: 1px dashed var(--line); padding: 3px 8px; border-radius: 20px;
