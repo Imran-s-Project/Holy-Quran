@@ -74,3 +74,24 @@
 .mfa-trust-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--teal);}
 
 .mfa-challenge-hint{margin:0 0 14px;color:var(--ink-soft);font-size:14px;line-height:1.6;}
+
+.mfa-low-dot{
+  width:9px;height:9px;border-radius:50%;background:#C0392B;
+  margin-left:4px;flex:0 0 auto;box-shadow:0 0 0 2px var(--panel);
+}
+.mfa-low-text{color:#C0392B !important;font-weight:600;}
+.mfa-regen-urge{border-color:#C0392B;color:#C0392B;}
+
+.mfa-trusted-title{font-size:12.5px;font-weight:700;color:var(--ink-soft);margin:16px 0 8px;}
+.mfa-trusted-list{display:flex;flex-direction:column;gap:6px;}
+.mfa-trusted-row{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  border:1px solid var(--gold-soft);border-radius:10px;padding:8px 10px;background:var(--parchment);
+}
+.mfa-trusted-info{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink);}
+.mfa-trusted-you{color:var(--teal);font-weight:600;}
+.mfa-trusted-revoke{
+  border:none;background:none;color:var(--ink-soft);cursor:pointer;
+  width:26px;height:26px;border-radius:50%;flex:0 0 auto;
+}
+.mfa-trusted-revoke:hover{background:rgba(192,57,43,.1);color:#C0392B;}
