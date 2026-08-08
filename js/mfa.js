@@ -414,11 +414,16 @@ async function startTotpSetup(user, closeParentModal){
   if(!body) return;
   body.innerHTML = `
     <p style="margin:0 0 10px;color:var(--ink-soft);font-size:13.5px;">অথেনটিকেটর অ্যাপ দিয়ে নিচের QR কোডটি স্ক্যান করুন —</p>
-    <div class="mfa-qr-box"><canvas id="mfaQrCanvas" width="200" height="200"></canvas></div>
-    ${isMobile ? `<a href="${uri}" class="mfa-toggle-link" style="display:block;text-align:center;">📱 অথবা সরাসরি অথেনটিকেটর অ্যাপে খুলুন</a>` : ''}
-    <p style="margin:8px 0 6px;color:var(--ink-soft);font-size:12px;text-align:center;">অথবা এই কোডটি হাতে টাইপ করুন —</p>
+    <div class="mfa-qr-box">
+      <canvas id="mfaQrCanvas" width="200" height="200" style="display:none;"></canvas>
+      <div class="mfa-qr-loading" id="mfaQrLoading"><span class="mfa-spinner"></span> QR কোড তৈরি হচ্ছে...</div>
+    </div>
+    <div class="mfa-inline-row">
+      ${isMobile ? `<a href="${uri}" class="mfa-inline-btn" id="mfaOpenAppBtn"><i class="fa-solid fa-mobile-screen-button"></i> অথেনটিকেটর অ্যাপে যান</a>` : ''}
+      <button type="button" class="mfa-inline-btn" id="mfaCopySecret"><i class="fa-solid fa-copy"></i> কপি করুন</button>
+    </div>
+    <p style="margin:8px 0 6px;color:var(--ink-soft);font-size:12px;text-align:center;">উপরের বাটন/QR কাজ না করলে এই কোডটি অ্যাপে হাতে টাইপ করুন —</p>
     <div class="mfa-secret-key" id="mfaSecretKeyDisplay">${formatSecretForDisplay(secret)}</div>
-    <div style="text-align:center;"><button type="button" class="mfa-copy-key-btn" id="mfaCopySecret">কপি করুন</button></div>
     <p style="margin:14px 0 6px;color:var(--ink-soft);font-size:13.5px;">এখন অ্যাপে দেখানো ৬-সংখ্যার কোডটি দিয়ে নিশ্চিত করুন —</p>
     <input class="auth-field mfa-code-input" id="mfaSetupCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="______">
     <div class="auth-error" id="mfaSetupError"></div>
@@ -427,12 +432,29 @@ async function startTotpSetup(user, closeParentModal){
       <button class="tw-save-btn" id="mfaSetupConfirm">নিশ্চিত করুন</button>
     </div>`;
 
-  renderTotpQr(document.getElementById('mfaQrCanvas'), uri).then(ok => {
-    if(!ok){
-      const box = document.querySelector('.mfa-qr-box');
-      if(box) box.innerHTML = `<div class="mfa-qr-fallback">QR তৈরি করা যায়নি — নিচের কোডটি অ্যাপে ম্যানুয়ালি যোগ করুন।</div>`;
-    }
-  });
+  const tryRenderQr = () => {
+    const loading = document.getElementById('mfaQrLoading');
+    const canvas = document.getElementById('mfaQrCanvas');
+    if(loading){ loading.innerHTML = '<span class="mfa-spinner"></span> QR কোড তৈরি হচ্ছে...'; loading.style.display = ''; }
+    if(canvas) canvas.style.display = 'none';
+    renderTotpQr(canvas, uri).then(ok => {
+      if(!document.getElementById('mfaQrLoading') || !document.getElementById('mfaQrCanvas')) return; // মোডাল বদলে গেলে
+      if(ok){
+        loading.remove();
+        canvas.style.display = '';
+      } else {
+        loading.innerHTML = 'QR তৈরি করা যায়নি (ইন্টারনেট সংযোগ পরীক্ষা করুন) — নিচের কোডটি অ্যাপে ম্যানুয়ালি যোগ করুন, অথবা আবার চেষ্টা করুন।<br>';
+        const retryBtn = document.createElement('button');
+        retryBtn.type = 'button';
+        retryBtn.className = 'mfa-inline-btn';
+        retryBtn.style.marginTop = '8px';
+        retryBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> আবার চেষ্টা করুন';
+        retryBtn.onclick = tryRenderQr;
+        loading.appendChild(retryBtn);
+      }
+    });
+  };
+  tryRenderQr();
 
   document.getElementById('mfaCopySecret').onclick = () => {
     navigator.clipboard.writeText(secret).then(() => showToast('কোড কপি হয়েছে')).catch(() => {});
