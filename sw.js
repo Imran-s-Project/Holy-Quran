@@ -126,7 +126,13 @@ const isKnownAudioHost = url.href.startsWith(AUDIO_CDN) ||
     return;
   }
 
-  if (url.hostname.endsWith('googleapis.com') || url.hostname.endsWith('gstatic.com') || url.hostname.endsWith('cdnjs.cloudflare.com')) {
+  // Third-party CDN scripts (font-awesome, the QR library, EmailJS, etc.)
+  // — stale-while-revalidate so the first successful load is cached and
+  // every later use (including fully offline) is instant, instead of only
+  // covering cdnjs and leaving jsdelivr/unpkg to hit the network every time.
+  if (url.hostname.endsWith('googleapis.com') || url.hostname.endsWith('gstatic.com') ||
+      url.hostname.endsWith('cdnjs.cloudflare.com') || url.hostname.endsWith('jsdelivr.net') ||
+      url.hostname.endsWith('unpkg.com')) {
     event.respondWith(staleWhileRevalidate(req, FONT_CACHE_NAME));
     return;
   }
