@@ -142,13 +142,49 @@ function canonicalizeBackupCode(text){
 }
 
 // ---------- QR rendering ----------
-// Renders an otpauth:// URI as a scannable QR into the given <canvas>,
-// using the `qrcode` CDN library (see index.html). Resolves true/false so
-// callers can fall back to "type the key manually" messaging if the CDN
-// didn't load (e.g. offline first install).
-function renderTotpQr(canvasEl, otpauthUri){
+// Renders an otpauth:// URI as a scannable QR into the given <canvas>.
+// The `qrcode` library is loaded lazily (only when 2FA setup is actually
+// opened, not on every app load) and with several CDN fallbacks — one CDN
+// being blocked/slow/regionally unreachable no longer means "no QR ever".
+const QR_LIB_CDN_URLS = [
+  'https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js',
+  'https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js',
+  'https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.3/qrcode.min.js'
+];
+
+let qrLibLoadPromise = null;
+
+function loadScriptOnce(url, timeoutMs = 6000){
   return new Promise((resolve) => {
-    if(typeof QRCode === 'undefined' || !canvasEl){ resolve(false); return; }
+    const s = document.createElement('script');
+    s.src = url;
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    s.onload = () => { clearTimeout(timer); resolve(typeof QRCode !== 'undefined'); };
+    s.onerror = () => { clearTimeout(timer); resolve(false); };
+    document.head.appendChild(s);
+  });
+}
+
+// একাধিক CDN একে একে চেষ্টা করে — একটা ব্লকড/স্লো হলেও QR কোড আটকাবে না।
+function ensureQrLibLoaded(){
+  if(typeof QRCode !== 'undefined') return Promise.resolve(true);
+  if(qrLibLoadPromise) return qrLibLoadPromise;
+  qrLibLoadPromise = (async () => {
+    for(const url of QR_LIB_CDN_URLS){
+      if(typeof QRCode !== 'undefined') return true;
+      const ok = await loadScriptOnce(url);
+      if(ok) return true;
+    }
+    return typeof QRCode !== 'undefined';
+  })();
+  return qrLibLoadPromise;
+}
+
+async function renderTotpQr(canvasEl, otpauthUri){
+  if(!canvasEl) return false;
+  const ready = await ensureQrLibLoaded();
+  if(!ready || typeof QRCode === 'undefined') return false;
+  return new Promise((resolve) => {
     QRCode.toCanvas(canvasEl, otpauthUri, { width: 200, margin: 1 }, (err) => {
       resolve(!err);
     });
